@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+
+"""
+This is a minimal version of the AI agent application with global variable declarations fixed.
+"""
+
+from datetime import datetime
+from dotenv import load_dotenv
+import os
+import logging
+import sys
+import json
+import time
+import gc
+from flask import Flask, request, jsonify, render_template, redirect, url_for
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langgraph.graph import StateGraph, END
+from langchain_community.tools.tavily_search import TavilySearchResults
+from typing_extensions import TypedDict
+from langchain_community.vectorstores import Chroma
+from werkzeug.utils import secure_filename
+import ocr_utils
+import document_processor
+import ai_document_processor
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s %(levelname)s %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent.log"))
+    ]
+)
+
+load_dotenv()
+openai_key = os.getenv("OPENAI_API_KEY")
+tavily_key = os.getenv("TAVILY_API_KEY")
+
+# Flask app setup
+from flask_cors import CORS
+TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'templates')
+app = Flask(__name__, template_folder=TEMPLATE_DIR)
+CORS(app, 
+     origins=["*"],
+     supports_credentials=True,
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With"])
+
+# Global variables
+persist_dir = os.path.join(os.path.dirname(__file__), 'chroma_db')
+rag_db = None  # Global RAG database variable
+
+def load_rag_database():
+    global rag_db
+    try:
+        if os.path.exists(persist_dir):
+            logging.info(f"[INIT] Loading RAG database from {persist_dir}")
+            
+            # Re-initialize embeddings to ensure they match what was used during ingestion
+            local_embeddings = OpenAIEmbeddings(openai_api_key=openai_key)
+            rag_db = Chroma(persist_directory=persist_dir, embedding_function=local_embeddings)
+            
+            # Verify DB has documents
+            db_data = rag_db.get()
+            if db_data and 'documents' in db_data:
+                doc_count = len(db_data['documents'])
+                logging.info(f"[INIT] Successfully loaded RAG database with {doc_count} chunks")
+            else:
+                logging.warning("[INIT] RAG database exists but contains no documents")
+            
+            return True
+        else:
+            logging.warning(f"[INIT] No RAG database found at {persist_dir}")
+            return False
+    except Exception as e:
+        logging.error(f"[INIT] Error loading RAG database: {e}", exc_info=True)
+        return False
+
+# API routes
+@app.route('/ai-agent/docs', methods=['GET'])
+def list_docs():
+    global rag_db
+    try:
+        # Get query parameter for force reload
+        force_reload = request.args.get('force_reload', 'false').lower() == 'true'
+        
+        # Directory where policy documents are stored
+        docs_dir = os.path.join(os.path.dirname(__file__), 'policy_docs')
+        logging.info(f"[DOCS] Listing documents from {docs_dir}")
+        
+        # Force reload the RAG database if requested
+        if force_reload:
+            logging.info("[DOCS] Force reloading RAG database")
+            
+            try:
+                # Fix permissions on the database directory and files
+                try:
+                    for root, dirs, files in os.walk(persist_dir):
+                        for d in dirs:
+                            try:
+                                os.chmod(os.path.join(root, d), 0o777)
+                            except Exception as e:
+                                logging.warning(f"[DOCS] Could not set permissions on directory {d}: {e}")
+                        for f in files:
+                            try:
+                                os.chmod(os.path.join(root, f), 0o666)
+                            except Exception as e:
+                                logging.warning(f"[DOCS] Could not set permissions on file {f}: {e}")
+                except Exception as perm_err:
+                    logging.warning(f"[DOCS] Permission fix warning (non-fatal): {perm_err}")
+                
+                # Close and clear the existing database connection
+                if rag_db is not None:
+                    try:
+                        rag_db = None
+                        gc.collect()  # Force garbage collection
+                    except:
+                        pass
+                
+                # Create fresh embeddings and reload database
+                embeddings = OpenAIEmbeddings(openai_api_key=openai_key)
+                rag_db = Chroma(persist_directory=persist_dir, embedding_function=embeddings)
+                logging.info("[DOCS] Successfully reloaded RAG database")
+            except Exception as reload_err:
+                logging.error(f"[DOCS] Error reloading RAG database: {reload_err}", exc_info=True)
+        
+        files = []
+        # Get list of actual files on disk
+        for filename in os.listdir(docs_dir):
+            if filename.lower().endswith(('.pdf', '.docx', '.txt')):
+                file_path = os.path.join(docs_dir, filename)
+                if os.path.isfile(file_path):
+                    file_info = {
+                        'name': filename,
+                        'size': os.path.getsize(file_path),
+                        'last_modified': os.path.getmtime(file_path),
+                        'chunk_count': 0  # Will be updated with actual count below
+                    }
+                    files.append(file_info)
+
+        # Sort by most recently modified
+        files.sort(key=lambda x: x['last_modified'], reverse=True)
+        
+        # Get accurate per-document chunk counts from the vector database
+        rag_status = {
+            'initialized': False, 
+            'total_chunk_count': 0,
+            'per_document': {},
+            'orphaned_chunks': 0
+        }
+        
+        if rag_db is not None:
+            try:
+                # Force a fresh load of the database to get latest metadata
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                persist_dir = os.path.join(script_dir, "chroma_db")
+                
+                # Always create a fresh database instance to avoid caching issues
+                try:
+                    # Clear any existing reference first
+                    embeddings = OpenAIEmbeddings(openai_api_key=openai_key)
+                    
+                    # Force clear any previous instance
+                    fresh_db = None
+                    gc.collect()
+                    
+                    # Create a completely new connection
+                    fresh_db = Chroma(persist_directory=persist_dir, embedding_function=embeddings)
+                    
+                    # Get all data from the database
+                    db_data = fresh_db.get()
+                    
+                    if db_data and 'ids' in db_data and db_data['ids']:
+                        # Mark database as initialized
+                        rag_status['initialized'] = True
+                        
+                        # Count chunks per document - case insensitive comparison
+                        per_doc_counts = {}
+                        for meta in db_data.get('metadatas', []):
+                            if meta:
+                                source_doc = meta.get('source_doc', 'unknown')
+                                # Normalize filename for consistent comparison
+                                normalized_source = source_doc.strip().lower() if source_doc else 'unknown'
+                                per_doc_counts[normalized_source] = per_doc_counts.get(normalized_source, 0) + 1
+                        
+                        # Total chunks in database
+                        total_chunks = len(db_data['ids'])
+                        rag_status['total_chunk_count'] = total_chunks
+                        
+                        # Store per-document counts in status
+                        rag_status['per_document'] = per_doc_counts
+                        
+                        # Update file info with chunk counts - case insensitive matching
+                        for file_info in files:
+                            # First try exact match
+                            count = per_doc_counts.get(file_info['name'], 0)
+                            
+                            # If no exact match, try case-insensitive match
+                            if count == 0:
+                                normalized_name = file_info['name'].lower()
+                                count = per_doc_counts.get(normalized_name, 0)
+                                
+                            # Update the file info with chunk count
+                            file_info['chunk_count'] = count
+                except Exception as db_load_err:
+                    logging.error(f"[DOCS] Error getting database metadata: {db_load_err}", exc_info=True)
+            except Exception as e:
+                logging.error(f"[DOCS] Error processing database metadata: {e}", exc_info=True)
+        
+        return jsonify({
+            'documents': files,
+            'rag_status': rag_status
+        })
+        
+    except Exception as e:
+        logging.error(f"[DOCS] Error listing documents: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+# Initialize the application
+if __name__ == '__main__':
+    # Initialize the RAG database
+    load_rag_database()
+    
+    # Run the Flask app
+    app.run(host='0.0.0.0', port=5100, debug=True)

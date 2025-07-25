@@ -1,0 +1,11 @@
+tunnel: myapp-tunnel
+credentials-file: /Users/chrishughes/.cloudflared/7a86c686-c568-457d-ba01-13ed2005537f.json
+
+ingress:
+  - hostname: fep.mrchughes.site
+    service: http://localhost:3000
+
+  - hostname: agent.mrchughes.site
+    service: http://localhost:5100
+
+  - service: http_status:404

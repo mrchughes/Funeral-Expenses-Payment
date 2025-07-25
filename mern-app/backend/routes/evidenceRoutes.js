@@ -1,0 +1,20 @@
+// backend/routes/evidenceRoutes.js
+const express = require("express");
+const router = express.Router();
+const { protect } = require("../middlewares/authMiddleware");
+const {
+    uploadEvidence,
+    deleteEvidence,
+    listEvidence,
+    getEvidenceDetails,
+    updateEvidenceExtraction
+} = require("../controllers/evidenceController");
+
+// Routes for evidence management
+router.post("/upload", protect, uploadEvidence);
+router.delete("/:evidenceId", protect, deleteEvidence);
+router.get("/list/:applicationId?", protect, listEvidence);
+router.get("/:evidenceId", protect, getEvidenceDetails);
+router.post("/:evidenceId/update-extraction", protect, updateEvidenceExtraction);
+
+module.exports = router;

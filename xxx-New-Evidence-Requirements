@@ -1,0 +1,94 @@
+## FEP Application Form Requirements
+
+1. **Data Persistence**
+   - The application form must persist data to a MongoDB database
+   - Each form should be stored as a document in an "applicationForms" collection
+
+2. **Application Identification**
+   - Each application form must have a unique identifier (`applicationId`)
+   - The application ID must be a UUID v4 format
+   - Example: `"applicationId": "550e8400-e29b-41d4-a716-446655440000"`
+
+3. **User Association**
+   - Each application form must be associated with a specific user via their `customerId`
+   - The customerId must be stored with the application form document
+   
+
+4. **Application Status Management**
+   - Applications must have a status field with the following possible values:
+     - "draft": Initial state, editable by the user
+     - "submitted": Final state, no longer editable by the user
+   - Status transitions must be logged with timestamps
+   - Example: `"status": "draft", "statusHistory": [{"status": "draft", "timestamp": "2025-07-19T10:30:00Z"}]`
+
+5. **Draft Management**
+   - The system must allow users to save forms as drafts
+   - Draft forms must be retrievable when users log back in
+   - Each page of the form must be independently saveable
+   - Draft data must be loaded automatically when a user returns to a previously saved page
+
+6. **Form Submission**
+   - Upon submission, the application status must be updated to "submitted"
+   - A submission timestamp must be recorded
+   - A confirmation receipt should be generated and provided to the user
+   - Example: `"status": "submitted", "submissionTimestamp": "2025-07-19T14:45:00Z"`
+
+## Evidence Upload Requirements
+
+2. **Multi-file Selection**
+   - Users must be able to select multiple files for upload in a single operation
+   - The UI must provide clear feedback on selected files
+   - The UI must display progress during the upload process for the specifc file being uploaded.
+   - There must be on estatus box, not stacked status boxes as there is currentl as this looks messy
+
+3. **Upload Processing Workflow**
+   - For each selected file, the system must process files seuentially, not all at once:
+     - **Duplicate Check**: Verify the filename doesn't already exist for this application
+     - **Upload**: If not a duplicate, upload and associate with the current draft application and person
+     - **Record**: Add the filename to the evidence structure of the application model
+     - **Text Extraction**: Extract text from the image using OCR
+     - **Classification**: Identify document type (birth certificate, death certificate, etc.)
+     - **Field Matching**: Match extracted data to application form fields
+     - **Data Population**: Pre-fill matched data into the application form data model
+
+4. **Evidence Data Model**
+   - Each piece of evidence must be stored, linked to current application and person with the following example information:
+   ```json
+   {
+     "evidenceId": "ev-550e8400-e29b-41d4-a716-446655440000",
+     "filename": "birth_certificate.jpg",
+     "uploadTimestamp": "2025-07-19T11:30:00Z",
+     "documentType": "Birth Certificate",
+     "extractedText": "...",
+     "matchedFields": [
+       {
+         "formField": "dateOfBirth",
+         "extractedValue": "1980-01-15",
+         "confidenceScore": 0.95
+       }
+     ]
+   }
+   ```
+
+## Evidence Viewing Requirements
+
+1. **Evidence List View**
+   - On entering the evidence upload page, the system must display all evidence bound to the current application
+   - The list must include:
+     - Filename
+     - Upload date
+     - Document type (if identified)
+
+2. **Evidence Deletion**
+   - Users must be able to delete previously uploaded evidence
+   - Deletion process:
+     - Remove the evidence file from storage
+     - Remove the evidence entry from the application model
+     - Maintain, do not delete, any form data that was populated from the evidence
+   - Confirmation dialog must be displayed before deletion
+
+3. **Evidence Detail View**
+   - Users should be able to view details of uploaded evidence including:
+     - Preview of the document (if image format)
+     - Extracted data
+     - Fields populated from this evidence

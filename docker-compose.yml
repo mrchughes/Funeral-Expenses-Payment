@@ -1,0 +1,67 @@
+version: '3.8'
+services:
+  backend:
+    build:
+      context: ./mern-app/backend
+      dockerfile: Dockerfile
+    ports:
+      - "5200:5200"
+    depends_on:
+      - frontend
+      - ai-agent
+    restart: unless-stopped
+    networks:
+      - app-network
+    volumes:
+      - ./mern-app/backend/uploads:/uploads
+      - ./shared-evidence:/shared-evidence
+    environment:
+      - NODE_ENV=development
+      - PORT=5200
+      - MONGODB_URI=mongodb+srv://fepuser:FepTest123@devconnector.jmwb0ez.mongodb.net/FEP?retryWrites=true&w=majority&appName=DevConnector
+      - FRONTEND_URL=https://fep.mrchughes.site
+      - JWT_SECRET=secure_jwt_secret_for_authentication_token
+      - AI_AGENT_URL=http://ai-agent:5050
+
+  frontend:
+    build:
+      context: ./mern-app/frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  ai-agent:
+    build:
+      context: ./python-app/app/ai_agent
+      dockerfile: Dockerfile
+    ports:
+      - "5100:5050"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - funny_prompt=you are a helpful assistant. You provide sensitive advice to people who have been bereaved. You should query dwp policy online if unsure. Keep answers concise
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+    restart: unless-stopped
+    networks:
+      - app-network
+    volumes:
+      - ./python-app/app:/app
+      - ./shared-evidence:/shared-evidence
+
+  chroma-db:
+    image: chromadb/chroma
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./python-app/app/ai_agent/chroma_db:/chroma/.chroma/index
+    environment:
+      - IS_PERSISTENT=TRUE
+    restart: unless-stopped
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

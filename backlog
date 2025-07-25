@@ -1,0 +1,6 @@
+- [x] Disaggregate address fields and other fields on form where possible into individual fields (done)
+- [x] Add data validation to the form for post code, NINO etc. (in progress)
+- [ ] Add ability to upload and delete documents called Evidence to support application at start or end off process and bind to application
+- [ ] Add ability for python ai-agent to read the evidence documents as they are submitted, understand them and populate suggested entries in parts of the application when the user first and only first enters that page on form, not on subsequent visits. Prefix with “suggested” and make it stand out until overwritten or edited by user. The ai-agent needs to understand what the form fields mean and what the data in the uploaded documents mean. Consider RAG if appropriate.
+- [ ] All of the above should be as modular and re-usable as possible.
+- [ ] All should comply with gov.uk style guide.
