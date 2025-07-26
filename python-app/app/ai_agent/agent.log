@@ -45164,3 +45164,823 @@ Mary Hughes
 2025-07-25 20:01:57,158 INFO [EXTRACT] Successfully extracted 447 characters from document
 2025-07-25 20:01:57,158 ERROR [EXTRACT] OpenAI API key not available for LLM invocation
 2025-07-25 20:01:57,158 INFO 172.19.0.5 - - [25/Jul/2025 20:01:57] "POST /ai-agent/extract-form-data HTTP/1.1" 200 -
+2025-07-26 09:51:57,502 INFO [CHAT] Received chat request: helo
+2025-07-26 09:51:57,715 INFO Retrying request to /embeddings in 0.397481 seconds
+2025-07-26 09:51:58,204 INFO Retrying request to /embeddings in 0.919449 seconds
+2025-07-26 09:51:59,216 ERROR [AGENT] Error creating RAG response: Connection error.
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 250, in handle_request
+    resp = self._pool.handle_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/connection_pool.py", line 256, in handle_request
+    raise exc from None
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/connection_pool.py", line 236, in handle_request
+    response = connection.handle_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/connection.py", line 103, in handle_request
+    return self._connection.handle_request(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/http11.py", line 136, in handle_request
+    raise exc
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/http11.py", line 86, in handle_request
+    self._send_request_headers(**kwargs)
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/http11.py", line 144, in _send_request_headers
+    with map_exceptions({h11.LocalProtocolError: LocalProtocolError}):
+  File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.LocalProtocolError: Illegal header value b'Bearer '
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 969, in request
+    response = self._client.send(
+               ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 914, in send
+    response = self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 942, in _send_handling_auth
+    response = self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 979, in _send_handling_redirects
+    response = self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1014, in _send_single_request
+    response = transport.handle_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 249, in handle_request
+    with map_httpcore_exceptions():
+  File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.LocalProtocolError: Illegal header value b'Bearer '
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/ai_agent/main.py", line 557, in create_rag_response
+    relevant_docs = rag_db.similarity_search_with_score(query, k=6)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_community/vectorstores/chroma.py", line 439, in similarity_search_with_score
+    query_embedding = self._embedding_function.embed_query(query)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_openai/embeddings/base.py", line 635, in embed_query
+    return self.embed_documents([text], **kwargs)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_openai/embeddings/base.py", line 587, in embed_documents
+    return self._get_len_safe_embeddings(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_openai/embeddings/base.py", line 477, in _get_len_safe_embeddings
+    response = self.client.create(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/resources/embeddings.py", line 129, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 1239, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 1001, in request
+    raise APIConnectionError(request=request) from err
+openai.APIConnectionError: Connection error.
+2025-07-26 09:51:59,225 INFO [CHAT] RAG response attempted but no source documents found
+2025-07-26 09:51:59,300 INFO Retrying request to /chat/completions in 0.458318 seconds
+2025-07-26 09:51:59,828 INFO Retrying request to /chat/completions in 0.848740 seconds
+2025-07-26 09:52:00,770 ERROR [CHAT] Error generating direct LLM response: Connection error.
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 250, in handle_request
+    resp = self._pool.handle_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/connection_pool.py", line 256, in handle_request
+    raise exc from None
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/connection_pool.py", line 236, in handle_request
+    response = connection.handle_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/connection.py", line 103, in handle_request
+    return self._connection.handle_request(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/http11.py", line 136, in handle_request
+    raise exc
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/http11.py", line 86, in handle_request
+    self._send_request_headers(**kwargs)
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/http11.py", line 144, in _send_request_headers
+    with map_exceptions({h11.LocalProtocolError: LocalProtocolError}):
+  File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.LocalProtocolError: Illegal header value b'Bearer '
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 969, in request
+    response = self._client.send(
+               ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 914, in send
+    response = self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 942, in _send_handling_auth
+    response = self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 979, in _send_handling_redirects
+    response = self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1014, in _send_single_request
+    response = transport.handle_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 249, in handle_request
+    with map_httpcore_exceptions():
+  File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.LocalProtocolError: Illegal header value b'Bearer '
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/ai_agent/main.py", line 727, in chat
+    direct_response = chat_model.invoke(prompt)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 371, in invoke
+    self.generate_prompt(
+  File "/usr/local/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 956, in generate_prompt
+    return self.generate(prompt_messages, stop=stop, callbacks=callbacks, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 775, in generate
+    self._generate_with_cache(
+  File "/usr/local/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 1021, in _generate_with_cache
+    result = self._generate(
+             ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_openai/chat_models/base.py", line 961, in _generate
+    response = self.client.create(**payload)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_utils/_utils.py", line 287, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/resources/chat/completions/completions.py", line 925, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 1239, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 1001, in request
+    raise APIConnectionError(request=request) from err
+openai.APIConnectionError: Connection error.
+2025-07-26 09:52:00,780 INFO 172.19.0.5 - - [26/Jul/2025 09:52:00] "[35m[1mPOST /ai-agent/chat HTTP/1.1[0m" 500 -
+2025-07-26 09:52:00,798 INFO [CHAT] Received chat request: helo
+2025-07-26 09:52:00,945 INFO Retrying request to /embeddings in 0.385568 seconds
+2025-07-26 09:52:01,413 INFO Retrying request to /embeddings in 0.866902 seconds
+2025-07-26 09:52:02,367 ERROR [AGENT] Error creating RAG response: Connection error.
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 250, in handle_request
+    resp = self._pool.handle_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/connection_pool.py", line 256, in handle_request
+    raise exc from None
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/connection_pool.py", line 236, in handle_request
+    response = connection.handle_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/connection.py", line 103, in handle_request
+    return self._connection.handle_request(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/http11.py", line 136, in handle_request
+    raise exc
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/http11.py", line 86, in handle_request
+    self._send_request_headers(**kwargs)
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/http11.py", line 144, in _send_request_headers
+    with map_exceptions({h11.LocalProtocolError: LocalProtocolError}):
+  File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.LocalProtocolError: Illegal header value b'Bearer '
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 969, in request
+    response = self._client.send(
+               ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 914, in send
+    response = self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 942, in _send_handling_auth
+    response = self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 979, in _send_handling_redirects
+    response = self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1014, in _send_single_request
+    response = transport.handle_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 249, in handle_request
+    with map_httpcore_exceptions():
+  File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.LocalProtocolError: Illegal header value b'Bearer '
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/ai_agent/main.py", line 557, in create_rag_response
+    relevant_docs = rag_db.similarity_search_with_score(query, k=6)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_community/vectorstores/chroma.py", line 439, in similarity_search_with_score
+    query_embedding = self._embedding_function.embed_query(query)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_openai/embeddings/base.py", line 635, in embed_query
+    return self.embed_documents([text], **kwargs)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_openai/embeddings/base.py", line 587, in embed_documents
+    return self._get_len_safe_embeddings(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_openai/embeddings/base.py", line 477, in _get_len_safe_embeddings
+    response = self.client.create(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/resources/embeddings.py", line 129, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 1239, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 1001, in request
+    raise APIConnectionError(request=request) from err
+openai.APIConnectionError: Connection error.
+2025-07-26 09:52:02,372 INFO [CHAT] RAG response attempted but no source documents found
+2025-07-26 09:52:02,444 INFO Retrying request to /chat/completions in 0.490074 seconds
+2025-07-26 09:52:03,007 INFO Retrying request to /chat/completions in 0.944148 seconds
+2025-07-26 09:52:04,037 ERROR [CHAT] Error generating direct LLM response: Connection error.
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 250, in handle_request
+    resp = self._pool.handle_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/connection_pool.py", line 256, in handle_request
+    raise exc from None
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/connection_pool.py", line 236, in handle_request
+    response = connection.handle_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/connection.py", line 103, in handle_request
+    return self._connection.handle_request(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/http11.py", line 136, in handle_request
+    raise exc
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/http11.py", line 86, in handle_request
+    self._send_request_headers(**kwargs)
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_sync/http11.py", line 144, in _send_request_headers
+    with map_exceptions({h11.LocalProtocolError: LocalProtocolError}):
+  File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/usr/local/lib/python3.11/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.LocalProtocolError: Illegal header value b'Bearer '
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 969, in request
+    response = self._client.send(
+               ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 914, in send
+    response = self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 942, in _send_handling_auth
+    response = self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 979, in _send_handling_redirects
+    response = self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1014, in _send_single_request
+    response = transport.handle_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 249, in handle_request
+    with map_httpcore_exceptions():
+  File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.LocalProtocolError: Illegal header value b'Bearer '
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/ai_agent/main.py", line 727, in chat
+    direct_response = chat_model.invoke(prompt)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 371, in invoke
+    self.generate_prompt(
+  File "/usr/local/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 956, in generate_prompt
+    return self.generate(prompt_messages, stop=stop, callbacks=callbacks, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 775, in generate
+    self._generate_with_cache(
+  File "/usr/local/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 1021, in _generate_with_cache
+    result = self._generate(
+             ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_openai/chat_models/base.py", line 961, in _generate
+    response = self.client.create(**payload)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_utils/_utils.py", line 287, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/resources/chat/completions/completions.py", line 925, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 1239, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 1001, in request
+    raise APIConnectionError(request=request) from err
+openai.APIConnectionError: Connection error.
+2025-07-26 09:52:04,042 INFO 172.19.0.5 - - [26/Jul/2025 09:52:04] "[35m[1mPOST /ai-agent/chat HTTP/1.1[0m" 500 -
+2025-07-26 09:52:17,273 INFO [EXTRACT] Scanning evidence directory: /shared-evidence
+2025-07-26 09:52:17,273 INFO [EXTRACT] Environment variables: {'PATH': '/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOSTNAME': '60b685c25d6e', 'TAVILY_API_KEY': '', 'OPENAI_API_KEY': '', 'funny_prompt': 'you are a helpful assistant. You provide sensitive advice to people who have been bereaved. You should query dwp policy online if unsure. Keep answers concise', 'LANG': 'C.UTF-8', 'GPG_KEY': 'A035C...', 'PYTHON_VERSION': '3.11.13', 'PYTHON_SHA256': '8fb5f9fbc7609fa822cb31549884575db7fd9657cbffb89510b5d7975963a83a', 'HOME': '/root', 'FLASK_ENV': 'production', 'WERKZEUG_SERVER_FD': '15', 'WERKZEUG_RUN_MAIN': 'true'}
+2025-07-26 09:52:17,274 INFO [EXTRACT] All files in evidence directory: ['6883557c73d014bcade055d8_A_scanned_invoice_for_Hughes_&_Sons_Funeral_Direct.png', 'Proof_of_Relationship.docx', 'A_scanned_image_of_a_certified_copy_of_an_entry_of.png', 'Funeral_Bill.docx', '6883526693c2df4b362343e4_A_scanned_invoice_for_Hughes_&_Sons_Funeral_Direct.png', '687ba3b2faff0108a988c154_A_scanned_invoice_for_Hughes_&_Sons_Funeral_Direct.png', 'testupload002_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png', 'A_scanned_letter_from_the_Department_for_Work_&_Pe.png', 'test_death_cert.png', 'Proof_of_Responsibility.docx', '687ba3b2faff0108a988c154_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png', '6883526693c2df4b362343e4_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png', 'Proof_of_Benefits.docx', 'A_scanned_death_certificate_for_Brian_Hughes_is_pr.png', 'A_scanned_invoice_for_Hughes_&_Sons_Funeral_Direct.png', '687ba3b2faff0108a988c154_A_scanned_letter_from_the_Department_for_Work_&_Pe.png', '6883526693c2df4b362343e4_A_scanned_letter_from_the_Department_for_Work_&_Pe.png', 'testupload001_A_scanned_invoice_for_Hughes_&_Sons_Funeral_Direct.png', '687ba3b2faff0108a988c154_A_scanned_image_of_a_certified_copy_of_an_entry_of.png', 'testupload003_A_scanned_letter_from_the_Department_for_Work_&_Pe.png', '6883526693c2df4b362343e4_A_scanned_image_of_a_certified_copy_of_an_entry_of.png', 'Death_Certificate.docx', '6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png']
+2025-07-26 09:52:17,274 INFO [OCR] Document processor initialized with upload folder: /shared-evidence
+2025-07-26 09:52:17,274 INFO [OCR] Document processor initialized with upload folder: /tmp/uploads
+2025-07-26 09:52:17,274 INFO [AI-OCR] Initializing AI Document Processor with model: gpt-3.5-turbo
+2025-07-26 09:52:17,310 INFO [AI-OCR] Successfully initialized LLM: gpt-3.5-turbo
+2025-07-26 09:52:17,310 INFO [AI-OCR] Text splitter initialized
+2025-07-26 09:52:17,310 INFO [EXTRACT] AI Document Processor initialized successfully
+2025-07-26 09:52:17,310 INFO [EXTRACT] Processing requested files: ['6883557c73d014bcade055d8_A_scanned_invoice_for_Hughes_&_Sons_Funeral_Direct.png']
+2025-07-26 09:52:17,311 INFO [EXTRACT] Found exact match for requested ID 6883557c73d014bcade055d8_A_scanned_invoice_for_Hughes_&_Sons_Funeral_Direct.png
+2025-07-26 09:52:17,311 INFO [EXTRACT] Mapped requested ID 6883557c73d014bcade055d8_A_scanned_invoice_for_Hughes_&_Sons_Funeral_Direct.png to file 6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png
+2025-07-26 09:52:17,311 INFO [EXTRACT] File prefix map: {'6883557c73d014bcade055d8_A_scanned_invoice_for_Hughes_&_Sons_Funeral_Direct.png': '6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png'}
+2025-07-26 09:52:17,311 INFO [EXTRACT] Processing file: /shared-evidence/6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png
+2025-07-26 09:52:17,311 INFO [OCR] Processing file: /shared-evidence/6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png
+2025-07-26 09:52:17,311 INFO [OCR] Processing file /shared-evidence/6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png with extension .png
+2025-07-26 09:52:17,311 INFO [OCR] Using enhanced PNG processing for /shared-evidence/6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png
+2025-07-26 09:52:17,312 INFO [OCR] Processing image file: /shared-evidence/6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png
+2025-07-26 09:52:17,312 INFO [OCR] Image size: (1024, 1536), mode: RGB, format: PNG
+2025-07-26 09:52:17,348 INFO [OCR] Low DPI image detected: (72, 72). Enhancing...
+2025-07-26 09:52:17,349 INFO [OCR] Using enhanced preprocessing for PNG file
+2025-07-26 09:52:17,476 INFO [OCR] Created 3 preprocessed versions for PNG
+2025-07-26 09:52:17,925 INFO [OCR] Default configuration extracted 432 chars
+2025-07-26 09:52:18,344 INFO [OCR] Config --oem 1 --... extracted 432 chars
+2025-07-26 09:52:18,744 INFO [OCR] Config --psm 4 --... extracted 432 chars
+2025-07-26 09:52:19,151 INFO [OCR] Config --psm 3 --... extracted 432 chars
+2025-07-26 09:52:19,540 INFO [OCR] Config --psm 6 --... extracted 425 chars
+2025-07-26 09:52:19,942 INFO [OCR] Config --psm 11 -... extracted 448 chars
+2025-07-26 09:52:20,515 INFO [OCR] Config --psm 1 --... extracted 432 chars
+2025-07-26 09:52:20,917 INFO [OCR] Config --psm 4 --... extracted 432 chars
+2025-07-26 09:52:21,321 INFO [OCR] Config --psm 3 --... extracted 432 chars
+2025-07-26 09:52:21,878 INFO [OCR] Config --psm 12 -... extracted 448 chars
+2025-07-26 09:52:22,285 INFO [OCR] Config --psm 4 --... extracted 432 chars
+2025-07-26 09:52:22,669 INFO [OCR] Config --psm 6 --... extracted 425 chars
+2025-07-26 09:52:23,078 INFO [OCR] Config --psm 3 --... extracted 432 chars
+2025-07-26 09:52:23,647 INFO [OCR] Config --psm 1 --... extracted 429 chars
+2025-07-26 09:52:23,647 INFO [OCR] Text cleaning: before 448 chars, after 447 chars
+2025-07-26 09:52:23,647 INFO [OCR] Successfully processed file: /shared-evidence/6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png, text length: 447
+2025-07-26 09:52:23,647 INFO [OCR] Sample of extracted text: eo
+
+DEPARTMENT
+
+FOR WORK &
+
+PENSIONS
+
+Universal Credit
+
+10 July 2025
+
+Mary Hughes
+
+17 Jones Street
+
+...
+2025-07-26 09:52:23,647 INFO [OCR] Extracted 447 characters from image
+2025-07-26 09:52:23,647 INFO [OCR] Sample of extracted text: eo
+
+DEPARTMENT
+
+FOR WORK &
+
+PENSIONS
+
+Universal Credit
+
+10 July 2025
+
+Mary Hughes
+
+17 Jones Street
+
+...
+2025-07-26 09:52:23,647 INFO [OCR] Text cleaning: before 447 chars, after 447 chars
+2025-07-26 09:52:23,647 INFO [OCR] Raw text length: 447, Cleaned text length: 447
+2025-07-26 09:52:23,648 INFO [OCR] Sample of cleaned text: eo
+
+DEPARTMENT
+
+FOR WORK &
+
+PENSIONS
+
+Universal Credit
+
+10 July 2025
+
+Mary Hughes
+
+17 Jones Street
+
+...
+2025-07-26 09:52:23,648 INFO [OCR] Successfully processed file: /shared-evidence/6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png, text length: 447
+2025-07-26 09:52:23,648 INFO [EXTRACT] Successfully extracted 447 characters from document
+2025-07-26 09:52:23,648 ERROR [EXTRACT] OpenAI API key not available for LLM invocation
+2025-07-26 09:52:23,648 INFO 172.19.0.5 - - [26/Jul/2025 09:52:23] "POST /ai-agent/extract-form-data HTTP/1.1" 200 -
+2025-07-26 09:55:57,625 INFO [INIT] OpenAI API key loaded successfully
+2025-07-26 09:55:57,628 INFO [INIT] Loading RAG database from /app/ai_agent/chroma_db
+2025-07-26 09:55:57,970 INFO Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-07-26 09:55:58,019 INFO [INIT] Successfully loaded RAG database with 0 chunks
+2025-07-26 09:55:58,031 INFO [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://172.19.0.4:5050
+2025-07-26 09:55:58,031 INFO [33mPress CTRL+C to quit[0m
+2025-07-26 09:55:58,032 INFO  * Restarting with stat
+2025-07-26 09:55:58,943 INFO [INIT] OpenAI API key loaded successfully
+2025-07-26 09:55:58,946 INFO [INIT] Loading RAG database from /app/ai_agent/chroma_db
+2025-07-26 09:55:59,353 INFO Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-07-26 09:55:59,392 INFO [INIT] Successfully loaded RAG database with 0 chunks
+2025-07-26 09:55:59,396 WARNING  * Debugger is active!
+2025-07-26 09:55:59,397 INFO  * Debugger PIN: 985-037-749
+2025-07-26 09:56:40,389 INFO [EXTRACT] Scanning evidence directory: /shared-evidence
+2025-07-26 09:56:40,389 INFO [EXTRACT] Environment variables: {'PATH': '/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOSTNAME': 'a7e2bcc774ac', 'funny_prompt': 'you are a helpful assistant. You provide sensitive advice to people who have been bereaved. You should query dwp policy online if unsure. Keep answers concise', 'TAVILY_API_KEY': '', 'OPENAI_API_KEY': 'your-...', 'LANG': 'C.UTF-8', 'GPG_KEY': 'A035C...', 'PYTHON_VERSION': '3.11.13', 'PYTHON_SHA256': '8fb5f9fbc7609fa822cb31549884575db7fd9657cbffb89510b5d7975963a83a', 'HOME': '/root', 'FLASK_ENV': 'production', 'WERKZEUG_SERVER_FD': '15', 'WERKZEUG_RUN_MAIN': 'true'}
+2025-07-26 09:56:40,390 INFO [EXTRACT] All files in evidence directory: ['Proof_of_Relationship.docx', '6883557c73d014bcade055d8_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png', 'A_scanned_image_of_a_certified_copy_of_an_entry_of.png', 'Funeral_Bill.docx', '6883526693c2df4b362343e4_A_scanned_invoice_for_Hughes_&_Sons_Funeral_Direct.png', '687ba3b2faff0108a988c154_A_scanned_invoice_for_Hughes_&_Sons_Funeral_Direct.png', 'testupload002_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png', 'A_scanned_letter_from_the_Department_for_Work_&_Pe.png', 'test_death_cert.png', 'Proof_of_Responsibility.docx', '687ba3b2faff0108a988c154_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png', '6883526693c2df4b362343e4_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png', 'Proof_of_Benefits.docx', 'A_scanned_death_certificate_for_Brian_Hughes_is_pr.png', 'A_scanned_invoice_for_Hughes_&_Sons_Funeral_Direct.png', '687ba3b2faff0108a988c154_A_scanned_letter_from_the_Department_for_Work_&_Pe.png', '6883526693c2df4b362343e4_A_scanned_letter_from_the_Department_for_Work_&_Pe.png', 'testupload001_A_scanned_invoice_for_Hughes_&_Sons_Funeral_Direct.png', '687ba3b2faff0108a988c154_A_scanned_image_of_a_certified_copy_of_an_entry_of.png', 'testupload003_A_scanned_letter_from_the_Department_for_Work_&_Pe.png', '6883526693c2df4b362343e4_A_scanned_image_of_a_certified_copy_of_an_entry_of.png', 'Death_Certificate.docx']
+2025-07-26 09:56:40,391 INFO [OCR] Document processor initialized with upload folder: /shared-evidence
+2025-07-26 09:56:40,393 INFO [OCR] Document processor initialized with upload folder: /tmp/uploads
+2025-07-26 09:56:40,394 INFO [AI-OCR] Initializing AI Document Processor with model: gpt-3.5-turbo
+2025-07-26 09:56:40,444 INFO [AI-OCR] Successfully initialized LLM: gpt-3.5-turbo
+2025-07-26 09:56:40,444 INFO [AI-OCR] Text splitter initialized
+2025-07-26 09:56:40,444 INFO [EXTRACT] AI Document Processor initialized successfully
+2025-07-26 09:56:40,444 INFO [EXTRACT] Processing requested files: ['6883557c73d014bcade055d8_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png']
+2025-07-26 09:56:40,445 INFO [EXTRACT] Found exact match for requested ID 6883557c73d014bcade055d8_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png
+2025-07-26 09:56:40,445 INFO [EXTRACT] File prefix map: {'6883557c73d014bcade055d8_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png': '6883557c73d014bcade055d8_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png'}
+2025-07-26 09:56:40,445 INFO [EXTRACT] Processing file: /shared-evidence/6883557c73d014bcade055d8_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png
+2025-07-26 09:56:40,445 INFO [OCR] Processing file: /shared-evidence/6883557c73d014bcade055d8_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png
+2025-07-26 09:56:40,445 INFO [OCR] Processing file /shared-evidence/6883557c73d014bcade055d8_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png with extension .png
+2025-07-26 09:56:40,445 INFO [OCR] Using enhanced PNG processing for /shared-evidence/6883557c73d014bcade055d8_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png
+2025-07-26 09:56:40,445 INFO [OCR] Processing image file: /shared-evidence/6883557c73d014bcade055d8_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png
+2025-07-26 09:56:40,454 INFO [OCR] Image size: (1024, 1536), mode: RGB, format: PNG
+2025-07-26 09:56:40,495 INFO [OCR] Low DPI image detected: (72, 72). Enhancing...
+2025-07-26 09:56:40,495 INFO [OCR] Using enhanced preprocessing for PNG file
+2025-07-26 09:56:40,624 INFO [OCR] Created 3 preprocessed versions for PNG
+2025-07-26 09:56:41,259 INFO [OCR] Default configuration extracted 742 chars
+2025-07-26 09:56:41,825 INFO [OCR] Config --oem 1 --... extracted 742 chars
+2025-07-26 09:56:42,368 INFO [OCR] Config --psm 4 --... extracted 692 chars
+2025-07-26 09:56:42,937 INFO [OCR] Config --psm 3 --... extracted 742 chars
+2025-07-26 09:56:43,541 INFO [OCR] Config --psm 6 --... extracted 774 chars
+2025-07-26 09:56:44,120 INFO [OCR] Config --psm 11 -... extracted 756 chars
+2025-07-26 09:56:44,903 INFO [OCR] Config --psm 1 --... extracted 742 chars
+2025-07-26 09:56:45,447 INFO [OCR] Config --psm 4 --... extracted 692 chars
+2025-07-26 09:56:46,018 INFO [OCR] Config --psm 3 --... extracted 742 chars
+2025-07-26 09:56:46,773 INFO [OCR] Config --psm 12 -... extracted 751 chars
+2025-07-26 09:56:47,300 INFO [OCR] Config --psm 4 --... extracted 692 chars
+2025-07-26 09:56:47,850 INFO [OCR] Config --psm 6 --... extracted 686 chars
+2025-07-26 09:56:48,407 INFO [OCR] Config --psm 3 --... extracted 717 chars
+2025-07-26 09:56:49,210 INFO [OCR] Config --psm 1 --... extracted 742 chars
+2025-07-26 09:56:49,210 INFO [OCR] Text cleaning: before 774 chars, after 773 chars
+2025-07-26 09:56:49,210 INFO [OCR] Successfully processed file: /shared-evidence/6883557c73d014bcade055d8_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png, text length: 773
+2025-07-26 09:56:49,210 INFO [OCR] Sample of extracted text: CERTIFIED to be a true copy ee Issued for the purposes
+of an entry in register of deaths fia Birtihs...
+2025-07-26 09:56:49,211 INFO [OCR] Extracted 773 characters from image
+2025-07-26 09:56:49,211 INFO [OCR] Sample of extracted text: CERTIFIED to be a true copy ee Issued for the purposes
+of an entry in register of deaths fia Birtihs...
+2025-07-26 09:56:49,211 INFO [OCR] Text cleaning: before 771 chars, after 771 chars
+2025-07-26 09:56:49,211 INFO [OCR] Raw text length: 773, Cleaned text length: 771
+2025-07-26 09:56:49,211 INFO [OCR] Sample of cleaned text: CERTIFIED to be a true copy ee Issued for the purposes
+of an entry in register of deaths fia Birtihs...
+2025-07-26 09:56:49,211 INFO [OCR] Successfully processed file: /shared-evidence/6883557c73d014bcade055d8_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png, text length: 771
+2025-07-26 09:56:49,211 INFO [EXTRACT] Successfully extracted 771 characters from document
+2025-07-26 09:56:49,942 INFO HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2025-07-26 09:56:49,955 ERROR [EXTRACT ERROR] LLM invocation error for 6883557c73d014bcade055d8_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png: Error code: 401 - {'error': {'message': 'Incorrect API key provided: your-ope*******-key. You can find your API key at https://platform.openai.com/account/api-keys.', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_api_key'}}
+Traceback (most recent call last):
+  File "/app/ai_agent/main.py", line 1024, in extract_form_data
+    response = llm.invoke(prompt)
+               ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 371, in invoke
+    self.generate_prompt(
+  File "/usr/local/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 956, in generate_prompt
+    return self.generate(prompt_messages, stop=stop, callbacks=callbacks, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 775, in generate
+    self._generate_with_cache(
+  File "/usr/local/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 1021, in _generate_with_cache
+    result = self._generate(
+             ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_openai/chat_models/base.py", line 961, in _generate
+    response = self.client.create(**payload)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_utils/_utils.py", line 287, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/resources/chat/completions/completions.py", line 925, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 1239, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 1034, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.AuthenticationError: Error code: 401 - {'error': {'message': 'Incorrect API key provided: your-ope*******-key. You can find your API key at https://platform.openai.com/account/api-keys.', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_api_key'}}
+2025-07-26 09:56:49,965 INFO 172.19.0.2 - - [26/Jul/2025 09:56:49] "POST /ai-agent/extract-form-data HTTP/1.1" 200 -
+2025-07-26 09:56:54,601 INFO [CHAT] Received chat request: hi
+2025-07-26 09:56:56,883 INFO HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 401 Unauthorized"
+2025-07-26 09:56:56,887 ERROR [AGENT] Error creating RAG response: Error code: 401 - {'error': {'message': 'Incorrect API key provided: your-ope*******-key. You can find your API key at https://platform.openai.com/account/api-keys.', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_api_key'}}
+Traceback (most recent call last):
+  File "/app/ai_agent/main.py", line 557, in create_rag_response
+    relevant_docs = rag_db.similarity_search_with_score(query, k=6)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_community/vectorstores/chroma.py", line 439, in similarity_search_with_score
+    query_embedding = self._embedding_function.embed_query(query)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_openai/embeddings/base.py", line 635, in embed_query
+    return self.embed_documents([text], **kwargs)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_openai/embeddings/base.py", line 587, in embed_documents
+    return self._get_len_safe_embeddings(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_openai/embeddings/base.py", line 477, in _get_len_safe_embeddings
+    response = self.client.create(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/resources/embeddings.py", line 129, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 1239, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 1034, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.AuthenticationError: Error code: 401 - {'error': {'message': 'Incorrect API key provided: your-ope*******-key. You can find your API key at https://platform.openai.com/account/api-keys.', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_api_key'}}
+2025-07-26 09:56:56,893 INFO [CHAT] RAG response attempted but no source documents found
+2025-07-26 09:56:57,174 INFO HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2025-07-26 09:56:57,176 ERROR [CHAT] Error generating direct LLM response: Error code: 401 - {'error': {'message': 'Incorrect API key provided: your-ope*******-key. You can find your API key at https://platform.openai.com/account/api-keys.', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_api_key'}}
+Traceback (most recent call last):
+  File "/app/ai_agent/main.py", line 727, in chat
+    direct_response = chat_model.invoke(prompt)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 371, in invoke
+    self.generate_prompt(
+  File "/usr/local/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 956, in generate_prompt
+    return self.generate(prompt_messages, stop=stop, callbacks=callbacks, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 775, in generate
+    self._generate_with_cache(
+  File "/usr/local/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 1021, in _generate_with_cache
+    result = self._generate(
+             ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_openai/chat_models/base.py", line 961, in _generate
+    response = self.client.create(**payload)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_utils/_utils.py", line 287, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/resources/chat/completions/completions.py", line 925, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 1239, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 1034, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.AuthenticationError: Error code: 401 - {'error': {'message': 'Incorrect API key provided: your-ope*******-key. You can find your API key at https://platform.openai.com/account/api-keys.', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_api_key'}}
+2025-07-26 09:56:57,180 INFO 172.19.0.2 - - [26/Jul/2025 09:56:57] "[35m[1mPOST /ai-agent/chat HTTP/1.1[0m" 500 -
+2025-07-26 09:56:57,196 INFO [CHAT] Received chat request: hi
+2025-07-26 09:56:57,445 INFO HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 401 Unauthorized"
+2025-07-26 09:56:57,446 ERROR [AGENT] Error creating RAG response: Error code: 401 - {'error': {'message': 'Incorrect API key provided: your-ope*******-key. You can find your API key at https://platform.openai.com/account/api-keys.', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_api_key'}}
+Traceback (most recent call last):
+  File "/app/ai_agent/main.py", line 557, in create_rag_response
+    relevant_docs = rag_db.similarity_search_with_score(query, k=6)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_community/vectorstores/chroma.py", line 439, in similarity_search_with_score
+    query_embedding = self._embedding_function.embed_query(query)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_openai/embeddings/base.py", line 635, in embed_query
+    return self.embed_documents([text], **kwargs)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_openai/embeddings/base.py", line 587, in embed_documents
+    return self._get_len_safe_embeddings(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_openai/embeddings/base.py", line 477, in _get_len_safe_embeddings
+    response = self.client.create(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/resources/embeddings.py", line 129, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 1239, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 1034, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.AuthenticationError: Error code: 401 - {'error': {'message': 'Incorrect API key provided: your-ope*******-key. You can find your API key at https://platform.openai.com/account/api-keys.', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_api_key'}}
+2025-07-26 09:56:57,448 INFO [CHAT] RAG response attempted but no source documents found
+2025-07-26 09:56:57,725 INFO HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2025-07-26 09:56:57,728 ERROR [CHAT] Error generating direct LLM response: Error code: 401 - {'error': {'message': 'Incorrect API key provided: your-ope*******-key. You can find your API key at https://platform.openai.com/account/api-keys.', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_api_key'}}
+Traceback (most recent call last):
+  File "/app/ai_agent/main.py", line 727, in chat
+    direct_response = chat_model.invoke(prompt)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 371, in invoke
+    self.generate_prompt(
+  File "/usr/local/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 956, in generate_prompt
+    return self.generate(prompt_messages, stop=stop, callbacks=callbacks, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 775, in generate
+    self._generate_with_cache(
+  File "/usr/local/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 1021, in _generate_with_cache
+    result = self._generate(
+             ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/langchain_openai/chat_models/base.py", line 961, in _generate
+    response = self.client.create(**payload)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_utils/_utils.py", line 287, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/resources/chat/completions/completions.py", line 925, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 1239, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/openai/_base_client.py", line 1034, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.AuthenticationError: Error code: 401 - {'error': {'message': 'Incorrect API key provided: your-ope*******-key. You can find your API key at https://platform.openai.com/account/api-keys.', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_api_key'}}
+2025-07-26 09:56:57,734 INFO 172.19.0.2 - - [26/Jul/2025 09:56:57] "[35m[1mPOST /ai-agent/chat HTTP/1.1[0m" 500 -
+2025-07-26 10:03:09,909 INFO [INIT] OpenAI API key loaded successfully
+2025-07-26 10:03:09,913 INFO [INIT] Loading RAG database from /app/ai_agent/chroma_db
+2025-07-26 10:03:10,251 INFO Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-07-26 10:03:10,328 INFO [INIT] Successfully loaded RAG database with 0 chunks
+2025-07-26 10:03:10,354 INFO [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://172.19.0.3:5050
+2025-07-26 10:03:10,354 INFO [33mPress CTRL+C to quit[0m
+2025-07-26 10:03:10,356 INFO  * Restarting with stat
+2025-07-26 10:03:11,176 INFO [INIT] OpenAI API key loaded successfully
+2025-07-26 10:03:11,180 INFO [INIT] Loading RAG database from /app/ai_agent/chroma_db
+2025-07-26 10:03:11,480 INFO Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-07-26 10:03:11,546 INFO [INIT] Successfully loaded RAG database with 0 chunks
+2025-07-26 10:03:11,549 WARNING  * Debugger is active!
+2025-07-26 10:03:11,550 INFO  * Debugger PIN: 507-567-282
+2025-07-26 10:03:46,803 INFO [CHAT] Received chat request: hi
+2025-07-26 10:03:46,856 INFO [AGENT] Web search tool initialized
+2025-07-26 10:03:49,592 INFO HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+2025-07-26 10:03:49,609 INFO [AGENT] No sufficiently relevant documents found in RAG database (threshold: 0.3)
+2025-07-26 10:03:49,610 INFO [CHAT] RAG response attempted but no source documents found
+2025-07-26 10:03:54,503 INFO HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-07-26 10:03:54,518 INFO [CHAT] Generated response using web search results
+2025-07-26 10:03:54,519 INFO [CHAT] Returning response with source: web
+2025-07-26 10:03:54,520 INFO 172.19.0.5 - - [26/Jul/2025 10:03:54] "POST /ai-agent/chat HTTP/1.1" 200 -
+2025-07-26 10:04:06,730 INFO [EXTRACT] Scanning evidence directory: /shared-evidence
+2025-07-26 10:04:06,731 INFO [EXTRACT] Environment variables: {'PATH': '/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOSTNAME': '41d6910f48ca', 'OPENAI_API_KEY': 'sk-pr...', 'funny_prompt': 'you are a helpful assistant. You provide sensitive advice to people who have been bereaved. You should query dwp policy online if unsure. Keep answers concise', 'TAVILY_API_KEY': 'tvly-...', 'LANG': 'C.UTF-8', 'GPG_KEY': 'A035C...', 'PYTHON_VERSION': '3.11.13', 'PYTHON_SHA256': '8fb5f9fbc7609fa822cb31549884575db7fd9657cbffb89510b5d7975963a83a', 'HOME': '/root', 'FLASK_ENV': 'production', 'WERKZEUG_SERVER_FD': '14', 'WERKZEUG_RUN_MAIN': 'true'}
+2025-07-26 10:04:06,732 INFO [EXTRACT] All files in evidence directory: ['Proof_of_Relationship.docx', 'A_scanned_image_of_a_certified_copy_of_an_entry_of.png', 'Funeral_Bill.docx', '6883526693c2df4b362343e4_A_scanned_invoice_for_Hughes_&_Sons_Funeral_Direct.png', '687ba3b2faff0108a988c154_A_scanned_invoice_for_Hughes_&_Sons_Funeral_Direct.png', 'testupload002_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png', 'A_scanned_letter_from_the_Department_for_Work_&_Pe.png', 'test_death_cert.png', 'Proof_of_Responsibility.docx', '687ba3b2faff0108a988c154_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png', '6883526693c2df4b362343e4_A_scanned_death_certificate_for_Brian_Hughes_is_pr.png', 'Proof_of_Benefits.docx', 'A_scanned_death_certificate_for_Brian_Hughes_is_pr.png', 'A_scanned_invoice_for_Hughes_&_Sons_Funeral_Direct.png', '687ba3b2faff0108a988c154_A_scanned_letter_from_the_Department_for_Work_&_Pe.png', '6883526693c2df4b362343e4_A_scanned_letter_from_the_Department_for_Work_&_Pe.png', 'testupload001_A_scanned_invoice_for_Hughes_&_Sons_Funeral_Direct.png', '687ba3b2faff0108a988c154_A_scanned_image_of_a_certified_copy_of_an_entry_of.png', 'testupload003_A_scanned_letter_from_the_Department_for_Work_&_Pe.png', '6883526693c2df4b362343e4_A_scanned_image_of_a_certified_copy_of_an_entry_of.png', 'Death_Certificate.docx', '6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png']
+2025-07-26 10:04:06,733 INFO [OCR] Document processor initialized with upload folder: /shared-evidence
+2025-07-26 10:04:06,733 INFO [OCR] Document processor initialized with upload folder: /tmp/uploads
+2025-07-26 10:04:06,733 INFO [AI-OCR] Initializing AI Document Processor with model: gpt-3.5-turbo
+2025-07-26 10:04:06,778 INFO [AI-OCR] Successfully initialized LLM: gpt-3.5-turbo
+2025-07-26 10:04:06,779 INFO [AI-OCR] Text splitter initialized
+2025-07-26 10:04:06,779 INFO [EXTRACT] AI Document Processor initialized successfully
+2025-07-26 10:04:06,779 INFO [EXTRACT] Processing requested files: ['6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png']
+2025-07-26 10:04:06,779 INFO [EXTRACT] Found exact match for requested ID 6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png
+2025-07-26 10:04:06,779 INFO [EXTRACT] File prefix map: {'6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png': '6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png'}
+2025-07-26 10:04:06,780 INFO [EXTRACT] Processing file: /shared-evidence/6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png
+2025-07-26 10:04:06,780 INFO [OCR] Processing file: /shared-evidence/6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png
+2025-07-26 10:04:06,780 INFO [OCR] Processing file /shared-evidence/6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png with extension .png
+2025-07-26 10:04:06,780 INFO [OCR] Using enhanced PNG processing for /shared-evidence/6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png
+2025-07-26 10:04:06,780 INFO [OCR] Processing image file: /shared-evidence/6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png
+2025-07-26 10:04:06,784 INFO [OCR] Image size: (1024, 1536), mode: RGB, format: PNG
+2025-07-26 10:04:06,821 INFO [OCR] Low DPI image detected: (72, 72). Enhancing...
+2025-07-26 10:04:06,821 INFO [OCR] Using enhanced preprocessing for PNG file
+2025-07-26 10:04:06,948 INFO [OCR] Created 3 preprocessed versions for PNG
+2025-07-26 10:04:07,381 INFO [OCR] Default configuration extracted 432 chars
+2025-07-26 10:04:07,796 INFO [OCR] Config --oem 1 --... extracted 432 chars
+2025-07-26 10:04:08,212 INFO [OCR] Config --psm 4 --... extracted 432 chars
+2025-07-26 10:04:08,630 INFO [OCR] Config --psm 3 --... extracted 432 chars
+2025-07-26 10:04:09,013 INFO [OCR] Config --psm 6 --... extracted 425 chars
+2025-07-26 10:04:09,413 INFO [OCR] Config --psm 11 -... extracted 448 chars
+2025-07-26 10:04:09,984 INFO [OCR] Config --psm 1 --... extracted 432 chars
+2025-07-26 10:04:10,397 INFO [OCR] Config --psm 4 --... extracted 432 chars
+2025-07-26 10:04:10,798 INFO [OCR] Config --psm 3 --... extracted 432 chars
+2025-07-26 10:04:11,362 INFO [OCR] Config --psm 12 -... extracted 448 chars
+2025-07-26 10:04:11,770 INFO [OCR] Config --psm 4 --... extracted 432 chars
+2025-07-26 10:04:12,165 INFO [OCR] Config --psm 6 --... extracted 425 chars
+2025-07-26 10:04:12,582 INFO [OCR] Config --psm 3 --... extracted 432 chars
+2025-07-26 10:04:13,138 INFO [OCR] Config --psm 1 --... extracted 429 chars
+2025-07-26 10:04:13,138 INFO [OCR] Text cleaning: before 448 chars, after 447 chars
+2025-07-26 10:04:13,138 INFO [OCR] Successfully processed file: /shared-evidence/6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png, text length: 447
+2025-07-26 10:04:13,138 INFO [OCR] Sample of extracted text: eo
+
+DEPARTMENT
+
+FOR WORK &
+
+PENSIONS
+
+Universal Credit
+
+10 July 2025
+
+Mary Hughes
+
+17 Jones Street
+
+...
+2025-07-26 10:04:13,139 INFO [OCR] Extracted 447 characters from image
+2025-07-26 10:04:13,139 INFO [OCR] Sample of extracted text: eo
+
+DEPARTMENT
+
+FOR WORK &
+
+PENSIONS
+
+Universal Credit
+
+10 July 2025
+
+Mary Hughes
+
+17 Jones Street
+
+...
+2025-07-26 10:04:13,139 INFO [OCR] Text cleaning: before 447 chars, after 447 chars
+2025-07-26 10:04:13,139 INFO [OCR] Raw text length: 447, Cleaned text length: 447
+2025-07-26 10:04:13,139 INFO [OCR] Sample of cleaned text: eo
+
+DEPARTMENT
+
+FOR WORK &
+
+PENSIONS
+
+Universal Credit
+
+10 July 2025
+
+Mary Hughes
+
+17 Jones Street
+
+...
+2025-07-26 10:04:13,139 INFO [OCR] Successfully processed file: /shared-evidence/6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png, text length: 447
+2025-07-26 10:04:13,139 INFO [EXTRACT] Successfully extracted 447 characters from document
+2025-07-26 10:04:15,508 INFO HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-07-26 10:04:15,513 INFO [EXTRACT] Extraction result for 6883557c73d014bcade055d8_A_scanned_letter_from_the_Department_for_Work_&_Pe.png: {
+  "firstName": {
+    "value": "Mary"
+  },
+  "lastName": {
+    "value": "Hughes"
+  },
+  "addressLine1": {
+    "value": "17 Jones Street"
+  },
+  "town": {
+    "value": "Earsdon"
+  },
+  "county": {
+    "value": "Whitley Bay"
+  },
+  "postcode": {
+    "value": "NE25 7KL"
+  },
+  "nationalInsuranceNumber": {
+    "value": "QQ 12 34 56A"
+  },
+  "benefitType": {
+    "value": "Universal Credit"
+  },
+  "benefitReferenceNumber": {
+    "value": "UC 12025/XYZ"
+  },
+  "benefitLetterDate": {
+    "value": "10 July 2025"
+  },
+  "evidence": {
+    "value": "Scanned letter from the Department for Work & Pensions"
+  }
+}
+2025-07-26 10:04:15,517 INFO 172.19.0.5 - - [26/Jul/2025 10:04:15] "POST /ai-agent/extract-form-data HTTP/1.1" 200 -
+2025-07-26 10:34:12,825 INFO [CHAT] Received chat request: hi
+2025-07-26 10:34:12,863 INFO [AGENT] Web search tool initialized
+2025-07-26 10:34:13,617 INFO HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+2025-07-26 10:34:13,639 INFO [AGENT] No sufficiently relevant documents found in RAG database (threshold: 0.3)
+2025-07-26 10:34:13,640 INFO [CHAT] RAG response attempted but no source documents found
+2025-07-26 10:34:18,892 INFO HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-07-26 10:34:18,897 INFO [CHAT] Generated response using web search results
+2025-07-26 10:34:18,898 INFO [CHAT] Returning response with source: web
+2025-07-26 10:34:18,899 INFO 172.19.0.5 - - [26/Jul/2025 10:34:18] "POST /ai-agent/chat HTTP/1.1" 200 -

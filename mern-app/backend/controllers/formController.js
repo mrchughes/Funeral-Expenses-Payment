@@ -13,8 +13,23 @@ const submitForm = asyncHandler(async (req, res) => {
         throw new Error("Form data is required");
     }
 
+
     // Sanitize form data to prevent injection attacks
     const sanitizedFormData = JSON.parse(JSON.stringify(formData));
+
+    // Ensure checkbox array fields are always arrays, not null/undefined
+    const arrayFields = [
+        'evidence',
+        'benefitsReceived',
+        'partnerBenefitsReceived',
+        'householdBenefits',
+        'disabilityBenefits'
+    ];
+    arrayFields.forEach(field => {
+        if (!Array.isArray(sanitizedFormData[field])) {
+            sanitizedFormData[field] = [];
+        }
+    });
 
     console.log(`[FORM CONTROLLER] Saving form data for ${userEmail}, isAutoSave: ${isAutoSave}, fields: ${Object.keys(sanitizedFormData).join(', ')}`);
 

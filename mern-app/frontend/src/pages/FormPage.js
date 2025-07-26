@@ -17,6 +17,100 @@ import ChatbotWidget from "../components/ChatbotWidget";
 import EvidenceUpload from "../components/EvidenceUpload";
 import { uploadEvidenceFile, deleteEvidenceFile, getEvidenceList } from "../api/evidence";
 
+// Default form data structure
+const defaultFormData = {
+    // Personal details
+    firstName: "",
+    lastName: "",
+    dateOfBirth: "",
+    nationalInsuranceNumber: "",
+    addressLine1: "",
+    addressLine2: "",
+    town: "",
+    county: "",
+    postcode: "",
+    phoneNumber: "",
+    email: "",
+
+    // Partner details
+    hasPartner: "",
+    partnerFirstName: "",
+    partnerLastName: "",
+    partnerDateOfBirth: "",
+    partnerNationalInsuranceNumber: "",
+    partnerBenefitsReceived: [],
+    partnerSavings: "",
+
+    // Family composition and dependents
+    hasChildren: "",
+    numberOfChildren: "",
+    childrenDetails: "",
+    hasDependents: "",
+    dependentsDetails: "",
+    householdSize: "",
+    householdMembers: "",
+
+    // Enhanced benefits information
+    householdBenefits: [],
+    incomeSupportDetails: "",
+    disabilityBenefits: [],
+    carersAllowance: "",
+    carersAllowanceDetails: "",
+
+    // About the person who died
+    deceasedFirstName: "",
+    deceasedLastName: "",
+    deceasedDateOfBirth: "",
+    deceasedDateOfDeath: "",
+    relationshipToDeceased: "",
+
+    // Address of the person who died
+    deceasedAddressLine1: "",
+    deceasedAddressLine2: "",
+    deceasedTown: "",
+    deceasedCounty: "",
+    deceasedPostcode: "",
+    deceasedUsualAddress: "",
+
+    // Responsibility for funeral arrangements
+    responsibilityReason: "",
+    nextOfKin: "",
+    otherResponsiblePerson: "",
+
+    // Funeral details
+    funeralDirector: "",
+    funeralCost: "",
+    funeralDate: "",
+    funeralLocation: "",
+    burialOrCremation: "",
+
+    // Estate and assets
+    estateValue: "",
+    propertyOwned: "",
+    propertyDetails: "",
+    bankAccounts: "",
+    investments: "",
+    lifeInsurance: "",
+    debtsOwed: "",
+    willExists: "",
+    willDetails: "",
+
+    // Enhanced financial information
+    benefitsReceived: [],
+    employmentStatus: "",
+    savings: "",
+    savingsAmount: "",
+    otherIncome: "",
+
+    // Evidence and documentation
+    evidence: [],
+
+    // Declaration
+    declarationAgreed: false,
+    informationCorrect: false,
+    notifyChanges: false
+};
+
 const FormPage = () => {
     // Helper to render the current section
     const renderSection = () => {
@@ -738,100 +832,6 @@ const FormPage = () => {
             .finally(() => setEvidenceUploading(false));
     };
 
-    // Default form data structure
-    const defaultFormData = {
-        // Personal details
-        firstName: "",
-        lastName: "",
-        dateOfBirth: "",
-        nationalInsuranceNumber: "",
-        addressLine1: "",
-        addressLine2: "",
-        town: "",
-        county: "",
-        postcode: "",
-        phoneNumber: "",
-        email: "",
-
-        // Partner details
-        hasPartner: "",
-        partnerFirstName: "",
-        partnerLastName: "",
-        partnerDateOfBirth: "",
-        partnerNationalInsuranceNumber: "",
-        partnerBenefitsReceived: [],
-        partnerSavings: "",
-
-        // Family composition and dependents
-        hasChildren: "",
-        numberOfChildren: "",
-        childrenDetails: "",
-        hasDependents: "",
-        dependentsDetails: "",
-        householdSize: "",
-        householdMembers: "",
-
-        // Enhanced benefits information
-        householdBenefits: [],
-        incomeSupportDetails: "",
-        disabilityBenefits: [],
-        carersAllowance: "",
-        carersAllowanceDetails: "",
-
-        // About the person who died
-        deceasedFirstName: "",
-        deceasedLastName: "",
-        deceasedDateOfBirth: "",
-        deceasedDateOfDeath: "",
-        relationshipToDeceased: "",
-
-        // Address of the person who died
-        deceasedAddressLine1: "",
-        deceasedAddressLine2: "",
-        deceasedTown: "",
-        deceasedCounty: "",
-        deceasedPostcode: "",
-        deceasedUsualAddress: "",
-
-        // Responsibility for funeral arrangements
-        responsibilityReason: "",
-        nextOfKin: "",
-        otherResponsiblePerson: "",
-
-        // Funeral details
-        funeralDirector: "",
-        funeralCost: "",
-        funeralDate: "",
-        funeralLocation: "",
-        burialOrCremation: "",
-
-        // Estate and assets
-        estateValue: "",
-        propertyOwned: "",
-        propertyDetails: "",
-        bankAccounts: "",
-        investments: "",
-        lifeInsurance: "",
-        debtsOwed: "",
-        willExists: "",
-        willDetails: "",
-
-        // Financial circumstances
-        benefitsReceived: [],
-        employmentStatus: "",
-        savings: "",
-        savingsAmount: "",
-        otherIncome: "",
-
-        // Evidence and documentation
-        evidence: [],
-
-        // Declaration
-        declarationAgreed: false,
-        informationCorrect: false,
-        notifyChanges: false
-    };
-
     // Initial state values - will be updated in useEffect
     const [currentStep, setCurrentStep] = useState(1);
     const [formData, setFormData] = useState(defaultFormData);
@@ -975,7 +975,20 @@ const FormPage = () => {
                 if (savedData && savedData.formData) {
                     console.log('[FORM] Successfully loaded data from database:', savedData);
                     loadedFormData = { ...defaultFormData, ...savedData.formData };
-                    console.log('[FORM] Merged formData with defaults:', loadedFormData);
+                    // Ensure checkbox array fields are always arrays, not null/undefined
+                    const arrayFields = [
+                        'evidence',
+                        'benefitsReceived',
+                        'partnerBenefitsReceived',
+                        'householdBenefits',
+                        'disabilityBenefits'
+                    ];
+                    arrayFields.forEach(field => {
+                        if (!Array.isArray(loadedFormData[field])) {
+                            loadedFormData[field] = [];
+                        }
+                    });
+                    console.log('[FORM] Merged formData with defaults (arrays sanitized):', loadedFormData);
                 } else {
                     // Fallback to localStorage
                     console.log('[FORM] No data found in database, falling back to localStorage');
@@ -1021,7 +1034,7 @@ const FormPage = () => {
         };
 
         loadFormDataFromDatabase();
-    }, [user?.token, user?.email, searchParams, defaultFormData]);
+    }, [user?.token, user?.email, searchParams]);
 
     // Save form data to localStorage whenever it changes (but only after initial load)
     useEffect(() => {
