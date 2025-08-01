@@ -22,6 +22,8 @@ from werkzeug.utils import secure_filename
 import ocr_utils
 import document_processor
 import ai_document_processor
+from date_normalizer import DateNormalizer
+from document_classifier import DocumentClassifier
 
 # Configure logging
 logging.basicConfig(
@@ -863,26 +865,26 @@ def index():
 def guess_document_type_from_filename(filename):
     """
     Guess the document type based on filename patterns
-    """
-    filename = filename.lower()
     
-    # Check for common document type keywords
-    if 'death' in filename or 'deceased' in filename:
-        return "Death Certificate"
-    elif 'funeral' in filename or 'burial' in filename:
-        return "Funeral Bill"
-    elif 'benefit' in filename or 'payment' in filename or 'allowance' in filename:
-        return "Proof of Benefits"
-    elif 'relation' in filename or 'family' in filename:
-        return "Proof of Relationship"
-    elif 'responsibility' in filename or 'respons' in filename:
-        return "Proof of Responsibility"
-    elif 'bill' in filename or 'invoice' in filename:
-        return "Bill or Invoice"
-    elif 'id' in filename or 'passport' in filename or 'license' in filename:
-        return "Identification Document"
-    else:
-        return "Unknown Document"
+    This function is maintained for backward compatibility.
+    The DocumentClassifier class provides more comprehensive detection.
+    """
+    # Create a temporary instance of the DocumentClassifier
+    doc_classifier = DocumentClassifier()
+    
+    # Use the document classifier to detect the type
+    doc_type = doc_classifier.detect_document_type("", filename)
+    
+    # Map the detected type to the format expected by existing code
+    type_mapping = {
+        "death_certificate": "Death Certificate",
+        "birth_certificate": "Birth Certificate",
+        "funeral_invoice": "Funeral Bill",
+        "benefit_letter": "Proof of Benefits",
+        "unknown": "Unknown Document"
+    }
+    
+    return type_mapping.get(doc_type, "Unknown Document")
 
 @app.route('/ai-agent/extract-form-data', methods=['POST'])
 def extract_form_data():
@@ -918,6 +920,11 @@ def extract_form_data():
         logging.info("[EXTRACT] AI Document Processor initialized successfully")
     except Exception as e:
         logging.error(f"[EXTRACT] Failed to initialize AI Document Processor: {e}", exc_info=True)
+        
+    # Initialize date normalizer and document classifier
+    date_normalizer = DateNormalizer()
+    document_classifier = DocumentClassifier()
+    logging.info("[EXTRACT] Date Normalizer and Document Classifier initialized")
     
     # Get the list of files from the request, if provided
     requested_files = []
@@ -999,32 +1006,23 @@ def extract_form_data():
                     "_warning": {
                         "value": "Limited or no text could be extracted from this file.",
                         "reasoning": "The OCR process couldn't extract meaningful text from this image. This could be due to low image quality, handwritten text, or other factors."
-                    },
-                    "_fileType": {
-                        "value": guess_document_type_from_filename(fname),
-                        "reasoning": "Inferred from filename"
                     }
                 }
                 
-                # Add some fields based on the filename to help with form matching
-                filename_parts = fname.split('_')
-                if len(filename_parts) > 1:
-                    # Extract file type and description from the filename
-                    if "death" in fname.lower() or "certificate" in fname.lower():
-                        warning_result["_documentType"] = {
-                            "value": "Death Certificate",
-                            "reasoning": "Inferred from filename containing 'death' or 'certificate'"
-                        }
-                    elif "letter" in fname.lower() or "work" in fname.lower() or "pension" in fname.lower():
-                        warning_result["_documentType"] = {
-                            "value": "Benefit Letter",
-                            "reasoning": "Inferred from filename containing 'letter', 'work', or 'pension'"
-                        }
-                    elif "invoice" in fname.lower() or "funeral" in fname.lower() or "bill" in fname.lower():
-                        warning_result["_documentType"] = {
-                            "value": "Funeral Invoice",
-                            "reasoning": "Inferred from filename containing 'invoice', 'funeral', or 'bill'"
-                        }
+                # Use document classifier to detect document type from filename
+                doc_type = document_classifier.detect_document_type("", fname)
+                doc_type_display = doc_type.replace('_', ' ').title()
+                
+                warning_result["_fileType"] = {
+                    "value": doc_type_display,
+                    "reasoning": "Detected from filename patterns"
+                }
+                
+                # Add document type field for better form matching
+                warning_result["_documentType"] = {
+                    "value": doc_type_display,
+                    "reasoning": f"Detected as {doc_type_display} based on filename analysis"
+                }
                 
                 extracted[fname] = json.dumps(warning_result, indent=4)
                 continue
@@ -1108,14 +1106,18 @@ Evidence text:
             # Initialize LLM if needed
             if not openai_key:
                 logging.error("[EXTRACT] OpenAI API key not available for LLM invocation")
+                # Use document classifier to detect document type from filename
+                doc_type = document_classifier.detect_document_type(content, fname)
+                doc_type_display = doc_type.replace('_', ' ').title()
+                
                 extracted[fname] = json.dumps({
                     "_error": {
                         "value": "AI service unavailable - API key missing",
                         "reasoning": "The OpenAI API key is not configured. Please check server configuration."
                     },
                     "_fileType": {
-                        "value": guess_document_type_from_filename(fname),
-                        "reasoning": "Inferred from filename"
+                        "value": doc_type_display,
+                        "reasoning": "Detected from document content and filename patterns"
                     }
                 })
                 continue
@@ -1127,9 +1129,30 @@ Evidence text:
             )
             
             try:
+                # Get AI extraction response
                 response = llm.invoke(prompt)
-                extracted[fname] = str(response.content) if hasattr(response, 'content') else str(response)
-                logging.info(f"[EXTRACT] Extraction result for {fname}: {extracted[fname]}")
+                raw_response = str(response.content) if hasattr(response, 'content') else str(response)
+                
+                # Parse the extracted JSON data
+                try:
+                    # Convert the raw string response to Python dict
+                    extracted_data = json.loads(raw_response)
+                    
+                    # Detect document type from content and filename
+                    doc_type = document_classifier.detect_document_type(content, fname)
+                    logging.info(f"[EXTRACT] Detected document type for {fname}: {doc_type}")
+                    
+                    # Apply document-type based field normalization
+                    normalized_data = document_classifier.normalize_fields(extracted_data, doc_type)
+                    
+                    # Apply date normalization to the fields
+                    final_data = date_normalizer.process_data_object(normalized_data)                    # Convert back to formatted JSON string
+                    extracted[fname] = json.dumps(final_data, indent=4)
+                    logging.info(f"[EXTRACT] Processed extraction for {fname}")
+                except json.JSONDecodeError:
+                    # If JSON parsing fails, return the raw response
+                    logging.error(f"[EXTRACT] Failed to parse JSON from LLM response for {fname}")
+                    extracted[fname] = raw_response
             except Exception as e:
                 logging.error(f"[EXTRACT ERROR] LLM invocation error for {fname}: {e}", exc_info=True)
                 extracted[fname] = f"Error in AI processing: {e}"
