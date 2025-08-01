@@ -150,41 +150,13 @@ const EvidenceUpload = ({ onUpload, onDelete, evidenceList, uploadStatus }) => {
     }}>Status: {status.state || 'unknown'}</span>;
   };
 
-  // Find the current file being processed
-  const processingFile = Object.entries(uploadStatus || {}).find(
-    ([_, status]) => status?.state === 'extracting' || status?.state === 'uploading'
-  );
-
-  // Determine if we need to show the progress tracker
-  const showProgressTracker = processingFile && processingFile.length === 2;
-
+  // We've removed the duplicate progress tracker
   return (
     <div className="evidence-upload govuk-form-group">
       <label className="govuk-label" htmlFor="evidence-upload">Upload evidence documents</label>
       <div id="evidence-upload-hint" className="govuk-hint">
         Upload one file at a time. Accepted formats: PDF, JPG, PNG, DOCX. Maximum size: 25MB per file.
       </div>
-
-      {showProgressTracker && (
-        <div className="govuk-inset-text" style={{ marginTop: '15px', marginBottom: '15px', backgroundColor: '#f3f2f1', padding: '15px' }}>
-          <h4 className="govuk-heading-s" style={{ marginBottom: '10px' }}>Processing: {processingFile[0]}</h4>
-          <div className="govuk-body-s" style={{ marginBottom: '10px' }}>
-            Current step: <strong>{processingFile[1].state === 'uploading' ? 'Uploading file' : processingFile[1].step || 'Processing'}</strong>
-          </div>
-          <div className="progress-bar" style={{
-            height: '10px',
-            backgroundColor: '#d9d9d9',
-            borderRadius: '5px',
-            overflow: 'hidden'
-          }}>
-            <div style={{
-              width: `${processingFile[1].progress || 0}%`,
-              backgroundColor: processingFile[1].state === 'uploading' ? '#1d70b8' : '#f47738',
-              height: '100%'
-            }}></div>
-          </div>
-        </div>
-      )}
       <div className="govuk-file-upload-container">
         <input
           id="evidence-upload"
