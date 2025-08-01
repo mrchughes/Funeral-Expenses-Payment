@@ -95,6 +95,9 @@ def load_rag_database():
         logging.error(f"[INIT] Error loading RAG database: {e}", exc_info=True)
         return False
 
+# Load RAG database on module initialization
+load_rag_database()
+
 # API routes
 @app.route('/ai-agent/docs', methods=['GET'])
 def list_docs():
@@ -464,21 +467,27 @@ def should_use_direct_response(query):
     Returns True for general knowledge questions, math, etc.
     Returns False for policy or domain-specific questions.
     """
-    # List of keywords that suggest policy-related questions
+    # List of keywords that suggest policy-related questions - ALWAYS use RAG for these
     policy_keywords = [
         "dwp", "department", "pension", "benefit", "allowance", "payment", 
         "claim", "eligibility", "application", "policy", "funeral", "expense",
-        "support", "government", "entitlement", "welfare", "requirements"
+        "support", "government", "entitlement", "welfare", "requirements",
+        "form", "application", "apply", "bereavement"
     ]
+    
+    # Normalize query
+    query_lower = query.lower()
+    
+    # If query contains policy keywords, ALWAYS prefer RAG
+    if any(keyword in query_lower for keyword in policy_keywords):
+        logging.info("[CHAT] Detected policy-related question, will prioritize RAG")
+        return False  # Don't use direct LLM, try RAG first
     
     # List of keywords that suggest news-related questions
     news_keywords = [
         "news", "headlines", "bbc", "cnn", "today", "latest", "breaking", 
         "update", "article", "report", "story", "broadcast"
     ]
-    
-    # Normalize query
-    query_lower = query.lower()
     
     # Check for news-related questions
     if any(keyword in query_lower for keyword in news_keywords):
@@ -498,15 +507,13 @@ def should_use_direct_response(query):
         "tell me about", "explain", "define", "history of", "meaning of"
     ]
     
-    # If it contains general knowledge pattern but no policy keywords, likely general knowledge
+    # If it contains general knowledge pattern and no policy keywords, likely general knowledge
     for pattern in general_knowledge_patterns:
         if pattern in query_lower:
-            # Check if any policy keyword is in the query
-            if not any(keyword in query_lower for keyword in policy_keywords):
-                logging.info("[CHAT] Detected general knowledge question, using direct LLM")
-                return True
+            logging.info("[CHAT] Detected general knowledge question, using direct LLM")
+            return True
     
-    # Default to False - use RAG for policy questions
+    # Default to False - use RAG for most questions
     return False
 
 # Agent state and tools setup
@@ -540,7 +547,7 @@ def initialize_agent():
         return None, None
 
 # Create RAG response using the database
-def create_rag_response(query):
+def create_rag_response(query, conversation_history=None):
     global rag_db
     if rag_db is None:
         load_rag_database()
@@ -554,7 +561,21 @@ def create_rag_response(query):
         llm = ChatOpenAI(temperature=0, openai_api_key=openai_key)
         
         # Perform a similarity search to get relevant documents
-        relevant_docs = rag_db.similarity_search_with_score(query, k=6)
+        # If we have conversation history, include recent questions in the search query
+        search_query = query
+        if conversation_history:
+            # Get up to 3 most recent user messages to enhance the context
+            recent_queries = []
+            for message in reversed(conversation_history):
+                if message["role"] == "user" and len(recent_queries) < 3:
+                    recent_queries.append(message["content"])
+            
+            if recent_queries:
+                # Combine the current query with recent queries for better context
+                search_query = f"{query} {' '.join(recent_queries)}"
+                logging.info(f"[AGENT] Enhanced search query with conversation history: {search_query}")
+        
+        relevant_docs = rag_db.similarity_search_with_score(search_query, k=6)
         
         # Filter docs by relevance score (lower is better in OpenAI embeddings)
         # Only use docs with score below threshold (more relevant)
@@ -568,18 +589,35 @@ def create_rag_response(query):
         # Format the context from the documents
         context = "\n\n".join([f"Document: {doc.metadata.get('source_doc', 'Unknown')}\n{doc.page_content}" for doc in filtered_docs])
         
-        # Generate a response using the context
-        prompt = f"""You are a helpful assistant for DWP (Department for Work and Pensions) policy questions.
+        # Format messages for the chat model
+        messages = []
+        
+        # Add system prompt with context
+        messages.append({
+            "role": "system", 
+            "content": f"""You are a helpful assistant for DWP (Department for Work and Pensions) policy questions.
 Use the following information from policy documents to answer the user's question:
 
 {context}
 
-User Question: {query}
-
-Provide a concise, accurate answer based only on the information provided above. If the information doesn't contain a clear answer, say so.
+Provide concise, accurate answers based only on the information provided above. If the information doesn't contain a clear answer, say so.
+Maintain conversation context and handle follow-up questions appropriately.
 """
+        })
         
-        response = llm.invoke(prompt)
+        # Add conversation history if available
+        if conversation_history:
+            # Add only the most recent conversation turns (limit to 5 for context window)
+            recent_history = conversation_history[-10:] if len(conversation_history) > 10 else conversation_history
+            messages.extend(recent_history)
+        
+        # Add current query if not already included
+        if not messages or messages[-1]["role"] != "user":
+            messages.append({"role": "user", "content": query})
+        
+        logging.info(f"[AGENT] Using RAG with {len(messages)} message history")
+        
+        response = llm.invoke(messages)
         
         logging.info(f"[AGENT] Successfully created RAG response with {len(relevant_docs)} documents")
         return response.content, relevant_docs
@@ -602,6 +640,11 @@ def chat():
         user_input = data['input']
         logging.info(f"[CHAT] Received chat request: {user_input}")
         
+        # Get conversation history if available
+        conversation_history = data.get('history', [])
+        if conversation_history:
+            logging.info(f"[CHAT] Received conversation history with {len(conversation_history)} messages")
+        
         # Initialize agent components
         chat_model, web_search = initialize_agent()
         if not chat_model:
@@ -610,23 +653,45 @@ def chat():
                 'error': 'Failed to initialize chat model'
             }), 500
         
-        # Analyze the query to decide the best approach
-        is_general_knowledge = should_use_direct_response(user_input)
+        # Always try to load RAG database first
+        if rag_db is None:
+            loaded = load_rag_database()
+            if loaded:
+                logging.info("[CHAT] Successfully loaded RAG database")
+            else:
+                logging.warning("[CHAT] RAG database could not be loaded")
         
         response = ""
         source = "direct_llm"  # Default source
         
+        # Analyze the query to decide the best approach
+        is_general_knowledge = should_use_direct_response(user_input)
+        
         # For general knowledge questions, try direct LLM first
         if is_general_knowledge:
             try:
-                prompt = f"""You are a helpful assistant.
-Answer the following question based on your general knowledge:
-
-User Question: {user_input}
-
-Provide a concise, accurate answer. If this requires specific policy knowledge from the Department for Work and Pensions, say so.
-"""
-                direct_response = chat_model.invoke(prompt)
+                # Format conversation history for the LLM
+                messages = []
+                
+                # Add system prompt
+                messages.append({
+                    "role": "system", 
+                    "content": "You are a helpful assistant for the Department for Work and Pensions (DWP), specializing in Funeral Expenses Payment (FEP) policy. Always assume questions are about FEP or DWP context unless clearly stated otherwise. Provide sensitive and accurate advice to people who have been bereaved. Answer based on your knowledge of FEP policy. Maintain conversation context and be compassionate in your responses."
+                })
+                
+                # Add conversation history if available
+                if conversation_history:
+                    # Convert from frontend format to ChatOpenAI format if needed
+                    messages.extend(conversation_history)
+                
+                # Add the current user query if not already in history
+                if not messages or messages[-1]["role"] != "user":
+                    messages.append({"role": "user", "content": user_input})
+                
+                logging.info(f"[CHAT] Using direct LLM with {len(messages)} message history")
+                
+                # Use chat messages format instead of single prompt
+                direct_response = chat_model.invoke(messages)
                 response = direct_response.content
                 source = "direct_llm"
                 logging.info("[CHAT] Generated direct LLM response for general knowledge question")
@@ -641,22 +706,23 @@ Provide a concise, accurate answer. If this requires specific policy knowledge f
                 logging.error(f"[CHAT] Error generating direct response: {e}", exc_info=True)
                 # Continue to try other approaches if direct response fails
         
-        # Check if RAG database is loaded
-        if rag_db is None:
-            loaded = load_rag_database()
-            if not loaded:
-                logging.warning("[CHAT] RAG database could not be loaded")
-        
-        # Try RAG approach if database is available
+        # Try RAG approach first for non-general knowledge questions
         if rag_db is not None:
             try:
-                # Create RAG response
-                rag_response, source_docs = create_rag_response(user_input)
+                # Create RAG response with conversation history
+                rag_response, source_docs = create_rag_response(user_input, conversation_history)
                 
                 if rag_response and source_docs:
                     response = rag_response
                     source = "rag"  # Mark as RAG response if sources were used
                     logging.info(f"[CHAT] Found {len(source_docs)} relevant documents for RAG response")
+                    
+                    # Return RAG response immediately if we have one
+                    return jsonify({
+                        'success': True,
+                        'response': response,
+                        'source': source
+                    })
                 else:
                     logging.info("[CHAT] RAG response attempted but no source documents found")
             except Exception as e:
@@ -688,8 +754,13 @@ Provide a concise, accurate answer. If this requires specific policy knowledge f
                     # Full context for LLM
                     context = "\n\n".join([f"Source: {r['source']}\nTitle: {r['title']}\n{r['content']}" for r in formatted_results])
 
-                    # Generate response using web search results
-                    prompt = f"""You are a helpful assistant.
+                    # Format messages for the chat model
+                    messages = []
+                    
+                    # Add system prompt with context
+                    messages.append({
+                        "role": "system", 
+                        "content": f"""You are a helpful assistant for the Department for Work and Pensions (DWP), specializing in Funeral Expenses Payment (FEP) policy.
 Use the following information from web search to answer the user's question:
 
 {context}
@@ -697,17 +768,31 @@ Use the following information from web search to answer the user's question:
 Titles/Headlines found:
 {titles_text}
 
-User Question: {user_input}
-
 Instructions:
-1. If the user is asking for news, headlines, or recent events, focus on extracting and presenting the most relevant headlines or titles.
+1. Always assume questions are about FEP or DWP context unless clearly stated otherwise.
 2. Present information in a clear, organized format - use bullet points for lists of items.
 3. If the search results contain relevant information but not exactly what was asked, provide a helpful summary of what IS available.
 4. Only say there is no information if the results are completely irrelevant.
-5. For news-related queries, try to extract and summarize the 3-5 most relevant headlines or stories.
-6. Be conversational and helpful in your response.
+5. For FEP policy queries, focus on official DWP information and eligibility criteria.
+6. Be conversational, compassionate, and helpful in your response since you're likely speaking with someone who has been bereaved.
+7. Maintain conversation context with previous messages.
+8. Keep answers concise and focused on helping claimants understand FEP eligibility and process.
 """
-                    web_response = chat_model.invoke(prompt)
+                    })
+                    
+                    # Add conversation history if available
+                    if conversation_history:
+                        # Add only the most recent conversation turns (limit to keep context window manageable)
+                        recent_history = conversation_history[-5:] if len(conversation_history) > 5 else conversation_history
+                        messages.extend(recent_history)
+                    
+                    # Add current query if not already included
+                    if not messages or messages[-1]["role"] != "user":
+                        messages.append({"role": "user", "content": user_input})
+                    
+                    logging.info(f"[CHAT] Using web search with {len(messages)} message history")
+                    
+                    web_response = chat_model.invoke(messages)
                     response = web_response.content
                     source = "web"
                     logging.info("[CHAT] Generated response using web search results")
@@ -717,14 +802,35 @@ Instructions:
         # If neither RAG nor web search worked, fall back to direct LLM response
         if not response:
             try:
-                # Generate direct LLM response
-                prompt = f"""You are a helpful assistant for the Department for Work and Pensions (DWP). 
-Answer the following question based on your general knowledge. 
-If you don't know the answer or if it requires specific policy knowledge, please say so.
-
-User Question: {user_input}
+                # Generate direct LLM response with conversation history
+                messages = []
+                
+                # Add system prompt
+                messages.append({
+                    "role": "system", 
+                    "content": """You are a helpful assistant for the Department for Work and Pensions (DWP), specializing in Funeral Expenses Payment (FEP) policy.
+Always assume questions are about FEP or DWP context unless clearly stated otherwise.
+Provide sensitive and accurate advice to people who have been bereaved.
+Focus on helping claimants understand FEP eligibility, application process, and required documentation.
+If you don't know the answer or if it requires very specific policy details not in your knowledge, please say so.
+Maintain conversation context and handle follow-up questions appropriately.
+Keep answers concise, compassionate, and focused on helping the bereaved person.
 """
-                direct_response = chat_model.invoke(prompt)
+                })
+                
+                # Add conversation history if available
+                if conversation_history:
+                    # Add only the most recent conversation turns
+                    recent_history = conversation_history[-5:] if len(conversation_history) > 5 else conversation_history
+                    messages.extend(recent_history)
+                
+                # Add current query if not already included
+                if not messages or messages[-1]["role"] != "user":
+                    messages.append({"role": "user", "content": user_input})
+                
+                logging.info(f"[CHAT] Using fallback LLM with {len(messages)} message history")
+                
+                direct_response = chat_model.invoke(messages)
                 response = direct_response.content
                 source = "direct_llm"
                 logging.info("[CHAT] Generated direct LLM response")

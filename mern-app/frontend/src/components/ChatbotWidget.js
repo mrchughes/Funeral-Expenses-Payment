@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import "../styles/govuk-overrides.css";
 import { sendChatMessage } from "../api/chat";
 
+// Completely rewritten clean implementation with no reset/clear functionality
 const ChatbotWidget = () => {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([
@@ -9,32 +10,75 @@ const ChatbotWidget = () => {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const chatPanelRef = useRef(null);
+
+  // Load chat history from localStorage on initial render
+  useEffect(() => {
+    try {
+      const savedMessages = localStorage.getItem('chatHistory');
+      if (savedMessages) {
+        const parsedMessages = JSON.parse(savedMessages);
+        if (Array.isArray(parsedMessages) && parsedMessages.length > 0) {
+          setMessages(parsedMessages);
+        }
+      }
+    } catch (e) {
+      console.error("[CHAT] Error loading chat history:", e);
+    }
+  }, []);
+
+  // Save chat history to local storage whenever messages change
+  useEffect(() => {
+    if (messages.length > 1) { // Only save if there's more than the initial message
+      try {
+        localStorage.setItem('chatHistory', JSON.stringify(messages));
+      } catch (e) {
+        console.error("[CHAT] Error saving to localStorage:", e);
+      }
+    }
+  }, [messages]);
+
+  // No additional CSS injection needed, using govuk-overrides.css instead
 
   const handleSend = async (e) => {
     e.preventDefault();
     if (!input.trim()) return;
-    
+
     const userMessage = input.trim();
-    setMessages([...messages, { from: "user", text: userMessage }]);
+    const updatedMessages = [...messages, { from: "user", text: userMessage }];
+    setMessages(updatedMessages);
     setLoading(true);
     setInput("");
-    
+
     try {
-      console.log("[CHAT] Sending message to AI agent:", userMessage);
-      
-      const response = await sendChatMessage(userMessage);
+      // Convert messages to chat history format for the API
+      const chatHistory = messages.map(msg => ({
+        role: msg.from === "user" ? "user" : "assistant",
+        content: msg.text
+      }));
+
+      // Make sure all history items have valid roles and content
+      const validHistory = chatHistory.filter(item =>
+        (item.role === "user" || item.role === "assistant") &&
+        typeof item.content === "string" &&
+        item.content.trim().length > 0
+      );
+
+      const response = await sendChatMessage(userMessage, validHistory);
       setMessages((msgs) => [...msgs, { from: "bot", text: response }]);
-      
+
     } catch (error) {
       console.error("[CHAT] Error during chat:", error);
-      setMessages((msgs) => [...msgs, { 
-        from: "bot", 
-        text: "Sorry, I couldn't get a response. Please try again in a moment." 
+      setMessages((msgs) => [...msgs, {
+        from: "bot",
+        text: "Sorry, I couldn't get a response. Please try again in a moment."
       }]);
     }
-    
+
     setLoading(false);
   };
+
+  // No chat clearing functionality as per user's request
 
   return (
     <div className="govuk-chatbot-widget" style={{ position: "fixed", bottom: 24, right: 24, zIndex: 1000 }}>
@@ -43,6 +87,7 @@ const ChatbotWidget = () => {
         style={{ borderRadius: 24, minWidth: 48, minHeight: 48, padding: 8, fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
         aria-label="Open help chatbot"
         onClick={() => setOpen((o) => !o)}
+        data-safe="true"
       >
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false" style={{ verticalAlign: 'middle' }}>
           <circle cx="12" cy="12" r="11" stroke="#1d70b8" strokeWidth="2" fill="#fff" />
@@ -51,7 +96,12 @@ const ChatbotWidget = () => {
         Help
       </button>
       {open && (
-        <div className="govuk-chatbot-panel govuk-body" style={{ width: 320, background: "#fff", border: "1px solid #b1b4b6", borderRadius: 8, boxShadow: "0 2px 8px #0002", padding: 16, marginTop: 8 }}>
+        <div className="govuk-chatbot-panel govuk-body" ref={chatPanelRef} style={{ width: 320, background: "#fff", border: "1px solid #b1b4b6", borderRadius: 8, boxShadow: "0 2px 8px #0002", padding: 16, marginTop: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, borderBottom: '1px solid #b1b4b6', paddingBottom: 8 }}>
+            <h3 style={{ margin: 0, fontSize: '16px' }}>FEP Assistant</h3>
+            {/* No Reset or Clear Chat buttons here */}
+          </div>
+
           <div style={{ maxHeight: 240, overflowY: "auto", marginBottom: 8 }}>
             {messages.map((msg, i) => (
               <div key={i} style={{ textAlign: msg.from === "user" ? "right" : "left", margin: "4px 0" }}>
@@ -62,6 +112,7 @@ const ChatbotWidget = () => {
             ))}
             {loading && <div className="govuk-body-s" style={{ color: "#6c757d" }}>AI is typing…</div>}
           </div>
+
           <form onSubmit={handleSend} style={{ display: "flex", gap: 4 }}>
             <input
               className="govuk-input"
@@ -72,8 +123,15 @@ const ChatbotWidget = () => {
               onChange={(e) => setInput(e.target.value)}
               disabled={loading}
               aria-label="Type your question"
+              data-safe="true"
             />
-            <button className="govuk-button" style={{ padding: "0 12px", minWidth: 0 }} disabled={loading}>
+            <button
+              className="govuk-button"
+              style={{ padding: "0 12px", minWidth: 0 }}
+              disabled={loading}
+              data-action="send"
+              data-safe="true"
+            >
               Send
             </button>
           </form>

@@ -41,7 +41,7 @@ services:
       - "5100:5050"
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - funny_prompt=you are a helpful assistant. You provide sensitive advice to people who have been bereaved. You should query dwp policy online if unsure. Keep answers concise
+      - funny_prompt=you are a helpful assistant specialized in DWP's Funeral Expenses Payment (FEP) policy. Always assume questions are about FEP or DWP context unless clearly stated otherwise. You provide sensitive and accurate advice to people who have been bereaved. Query DWP policy online if unsure of specific details. Keep answers concise, compassionate, and focused on helping claimants understand FEP eligibility and process.
       - TAVILY_API_KEY=${TAVILY_API_KEY}
     restart: unless-stopped
     networks:

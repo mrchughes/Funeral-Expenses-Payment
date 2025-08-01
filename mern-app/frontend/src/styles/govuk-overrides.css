@@ -1,3 +1,10 @@
+/* Simple targeted CSS to hide only Reset and Clear Chat buttons in the chatbot */
+
+/* Only target buttons in the chatbot that contain reset or clear */
+.govuk-chatbot-panel button:not([data-action="send"]) {
+    display: none !important;
+}
+
 /* Dashboard bottom links styling: align links on the same row, sign out to the right */
 .dashboard-bottom-links {
     display: flex;
