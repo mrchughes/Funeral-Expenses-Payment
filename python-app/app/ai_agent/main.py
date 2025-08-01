@@ -857,8 +857,9 @@ Keep answers concise, compassionate, and focused on helping the bereaved person.
             'error': f'Unexpected error: {str(e)}'
         }), 500
 
-# Serve the main UI at the root URL
+# Serve the main UI at the root URL and /ai-agent/ path
 @app.route('/')
+@app.route('/ai-agent/')
 def index():
     return render_template('index.html')
 

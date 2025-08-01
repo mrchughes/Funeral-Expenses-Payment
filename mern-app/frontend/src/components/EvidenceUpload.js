@@ -74,7 +74,7 @@ const EvidenceUpload = ({ onUpload, onDelete, evidenceList, uploadStatus }) => {
             display: 'inline-block',
             marginLeft: '10px'
           }}>
-            <span role="img" aria-hidden="true" style={{ marginRight: '4px' }}>⬆️</span> 
+            <span role="img" aria-hidden="true" style={{ marginRight: '4px' }}>⬆️</span>
             Uploading {status.progress}%
           </span>
         </span>

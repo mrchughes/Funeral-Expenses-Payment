@@ -158,10 +158,12 @@ main {
 .govuk-card {
     background-color: #ffffff;
     border: 1px solid #b1b4b6;
-    padding: 25px;
-    margin-bottom: 30px;
+    padding: 20px;
+    margin-bottom: 25px;
     border-radius: 5px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    max-height: 500px;
+    overflow-y: auto;
 }
 
 .govuk-card__heading {
@@ -205,12 +207,12 @@ main {
 #chat-box {
     white-space: pre-line;
     border: 1px solid #b1b4b6;
-    padding: 20px;
+    padding: 15px;
     height: 300px;
     overflow-y: auto;
     background-color: #f8f8f8;
     color: #0b0c0c;
-    margin-bottom: 20px;
+    margin-bottom: 15px;
     border-radius: 4px;
     font-size: 16px;
     line-height: 1.5;
@@ -222,14 +224,19 @@ main {
     list-style-type: none;
     padding-left: 0;
     margin-bottom: 20px;
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #b1b4b6;
+    border-radius: 4px;
+    padding: 5px;
 }
 
 .rag-doc-list li {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 15px;
-    margin-bottom: 8px;
+    padding: 8px 10px;
+    margin-bottom: 5px;
     background-color: #f8f8f8;
     border: 1px solid #b1b4b6;
     border-radius: 4px;
@@ -242,12 +249,20 @@ main {
 
 .doc-actions {
     display: flex;
-    gap: 10px;
+    gap: 5px;
+}
+
+.govuk-button--small {
+    font-size: 14px;
+    padding: 5px 8px;
+    margin-bottom: 0;
 }
 
 /* Upload form styling */
 .upload-form-container {
-    margin-bottom: 25px;
+    margin-bottom: 20px;
+    max-height: 200px;
+    overflow-y: auto;
 }
 
 .upload-status-container {
@@ -287,9 +302,9 @@ main {
 .govuk-button {
     font-family: "GDS Transport", arial, sans-serif;
     font-weight: 400;
-    font-size: 18px;
+    font-size: 16px;
     line-height: 1.1875;
-    padding: 10px 15px;
+    padding: 8px 12px;
     border: 2px solid transparent;
     background-color: #00703c;
     color: #ffffff;
@@ -314,6 +329,11 @@ main {
     background-color: #00703c;
     color: #ffffff;
     box-shadow: 0 2px 0 #002d18;
+}
+
+#upload-btn {
+    padding: 6px 10px;
+    font-size: 14px;
 }
 
 .govuk-button--secondary {
@@ -346,7 +366,10 @@ main {
     padding-bottom: 25px;
     background-color: #f3f2f1;
     flex-shrink: 0;
-    margin-top: 50px;
+    margin-top: 30px;
+    position: relative;
+    bottom: 0;
+    width: 100%;
 }
 
 .govuk-footer__meta {
