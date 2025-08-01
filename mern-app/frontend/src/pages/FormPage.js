@@ -520,8 +520,8 @@ const FormPage = () => {
             // STEP 2: Extract data from this file
             console.log(`[EVIDENCE] Starting extraction for ${file.name}`);
 
-            // Update status to extracting for this file
-            statusTracker[file.name] = { progress: 100, state: 'extracting' };
+            // Update status to extracting for this file with initial step
+            statusTracker[file.name] = { progress: 100, state: 'extracting', step: 'OCR Text Extraction' };
             setUploadStatus({ ...statusTracker });
 
             // Extract the userId from the URL - the fileId should be the userId from the URL path
@@ -532,9 +532,17 @@ const FormPage = () => {
             const fileId = `${userId}_${file.name}`;
             console.log(`[EVIDENCE] Generated fileId for extraction: ${fileId}`);
 
+            // Update status to show we're sending to AI
+            statusTracker[file.name] = { progress: 100, state: 'extracting', step: 'Sending to AI Analysis' };
+            setUploadStatus({ ...statusTracker });
+
             // Call AI extraction just for this file
             const result = await extractFormData(user?.token, fileId);
             console.log(`[EVIDENCE] AI extraction result for ${file.name}:`, result);
+
+            // Update status to show we're analyzing the document
+            statusTracker[file.name] = { progress: 100, state: 'extracting', step: 'Analyzing Document Content' };
+            setUploadStatus({ ...statusTracker });
 
             // Check if result has expected format
             if (!result || !result.extracted) {
@@ -550,6 +558,9 @@ const FormPage = () => {
             }
 
             // STEP 3: Process the extracted data
+            statusTracker[file.name] = { progress: 100, state: 'extracting', step: 'Mapping Data to Form Fields' };
+            setUploadStatus({ ...statusTracker });
+
             let merged = { ...formData };
             let changedFields = [];
             let extractedFieldInfo = {};
@@ -748,6 +759,10 @@ const FormPage = () => {
                 console.error('[AI->FORM] Failed to store debug data:', e);
             }
 
+            // Update status to show we're finalizing the data
+            statusTracker[file.name] = { progress: 100, state: 'extracting', step: 'Finalizing Data' };
+            setUploadStatus({ ...statusTracker });
+
             // Update form data with merged values
             setFormData(merged);
 
@@ -772,7 +787,11 @@ const FormPage = () => {
                 setEvidenceWarning(`No relevant data could be extracted from ${file.name}. The file was uploaded successfully.`);
 
                 // Don't show popup, just update status
-                statusTracker[file.name] = { progress: 100, state: 'processed' };
+                statusTracker[file.name] = {
+                    progress: 100,
+                    state: 'processed',
+                    extractedCount: 0
+                };
                 setUploadStatus({ ...statusTracker });
                 setEvidenceUploading(false);
                 setProcessingFiles(false);
@@ -785,8 +804,13 @@ const FormPage = () => {
             setUpdatedFields(changedFields);
             setShowUpdatedFieldsPopup(true);
 
-            // Update status to show processed successfully
-            statusTracker[file.name] = { progress: 100, state: 'processed' };
+            // Update status to show processed successfully with field count
+            const extractedCount = changedFields.length;
+            statusTracker[file.name] = {
+                progress: 100,
+                state: 'processed',
+                extractedCount: extractedCount
+            };
             setUploadStatus({ ...statusTracker });
 
         } catch (err) {
