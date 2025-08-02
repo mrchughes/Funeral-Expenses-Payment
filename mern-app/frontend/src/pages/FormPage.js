@@ -800,7 +800,49 @@ const FormPage = () => {
 
             // Show popup with field updates if we have any
             console.log(`[AI->FORM][POPUP] changedFields from ${file.name}:`, changedFields, 'merged:', merged);
-            setExtractedFields(extractedFieldInfo);
+            
+            // Add document type detection if not already present
+            const enhancedExtractedFields = { ...extractedFieldInfo };
+            
+            // Determine document type if not already set
+            if (!enhancedExtractedFields.documentType) {
+                // Attempt to detect document type from filename or extracted fields
+                let documentType = "Unknown Document";
+                const lowerFileName = file.name.toLowerCase();
+                
+                if (lowerFileName.includes("death") || lowerFileName.includes("certificate")) {
+                    documentType = "Death Certificate";
+                } else if (lowerFileName.includes("invoice") || lowerFileName.includes("receipt") || lowerFileName.includes("funeral")) {
+                    documentType = "Funeral Invoice";
+                } else if (lowerFileName.includes("bank") || lowerFileName.includes("statement")) {
+                    documentType = "Bank Statement";
+                } else if (lowerFileName.includes("benefit") || lowerFileName.includes("claim")) {
+                    documentType = "Benefit Claim Form";
+                } else if (lowerFileName.includes("id") || lowerFileName.includes("passport") || lowerFileName.includes("license")) {
+                    documentType = "Identification Document";
+                } else if (lowerFileName.includes("medical") || lowerFileName.includes("health")) {
+                    documentType = "Medical Record";
+                } else if (lowerFileName.includes("letter")) {
+                    documentType = "Official Letter";
+                } else {
+                    // Try to infer from extracted fields
+                    const fieldKeys = Object.keys(enhancedExtractedFields);
+                    if (fieldKeys.some(k => k.includes("death") || k.includes("deceased"))) {
+                        documentType = "Death Certificate";
+                    } else if (fieldKeys.some(k => k.includes("invoice") || k.includes("cost") || k.includes("payment"))) {
+                        documentType = "Funeral Invoice";
+                    } else if (fieldKeys.some(k => k.includes("benefit") || k.includes("claim"))) {
+                        documentType = "Benefit Document";
+                    }
+                }
+                
+                enhancedExtractedFields.documentType = {
+                    value: documentType,
+                    reasoning: "Determined from document contents and file name"
+                };
+            }
+            
+            setExtractedFields(enhancedExtractedFields);
             setUpdatedFields(changedFields);
             setShowUpdatedFieldsPopup(true);
 
@@ -1383,57 +1425,138 @@ const FormPage = () => {
             ) : (
                 <>
                     {showUpdatedFieldsPopup && (
-                        <div style={{
+                        <div className="govuk-modal-overlay" style={{
                             position: 'fixed',
-                            top: 30,
-                            right: 30,
-                            zIndex: 9999,
-                            background: '#222',
-                            color: '#fff',
-                            padding: '18px 28px',
-                            borderRadius: 10,
-                            boxShadow: '0 2px 12px rgba(0,0,0,0.2)',
-                            fontSize: 16,
-                            maxWidth: 600,
-                            minWidth: 350
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            height: '100%',
+                            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                            zIndex: 9998,
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center'
                         }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <b>AI Document Ingest Results</b>
-                                <button
-                                    onClick={() => setShowUpdatedFieldsPopup(false)}
-                                    style={{
-                                        background: 'transparent',
-                                        color: '#fff',
-                                        border: 'none',
-                                        fontSize: 20,
-                                        cursor: 'pointer',
-                                        marginLeft: 16
-                                    }}
-                                    aria-label="Close popup"
-                                >
-                                    ×
-                                </button>
-                            </div>
-                            <div style={{ display: 'flex', gap: 32, marginTop: 12 }}>
-                                <div>
-                                    <div style={{ fontWeight: 'bold', marginBottom: 6 }}>Extracted Data Fields & Reasoning</div>
-                                    <ul style={{ margin: 0, padding: 0, listStyle: 'disc inside' }}>
-                                        {extractedFields && Object.keys(extractedFields).length > 0 ? (
-                                            Object.entries(extractedFields).map(([field, info]) => (
-                                                <li key={field}>
-                                                    <strong>{field}:</strong> {info.value}
-                                                    <br />
-                                                    <span style={{ color: '#888', fontSize: '0.95em' }}><em>{info.reasoning}</em></span>
-                                                </li>
-                                            ))
-                                        ) : <li style={{ color: '#aaa' }}>None</li>}
-                                    </ul>
-                                </div>
-                                <div>
-                                    <div style={{ fontWeight: 'bold', marginBottom: 6 }}>Form Fields Updated</div>
-                                    <ul style={{ margin: 0, padding: 0, listStyle: 'disc inside' }}>
-                                        {updatedFields.length > 0 ? updatedFields.map(f => <li key={f}>{f}</li>) : <li style={{ color: '#aaa' }}>None</li>}
-                                    </ul>
+                            <div className="govuk-modal-dialog" style={{
+                                position: 'relative',
+                                backgroundColor: '#ffffff',
+                                padding: '30px',
+                                borderRadius: '5px',
+                                boxShadow: '0 5px 15px rgba(0, 0, 0, 0.3)',
+                                maxWidth: '700px',
+                                width: '90%',
+                                maxHeight: '80vh',
+                                overflowY: 'auto',
+                                zIndex: 9999
+                            }}>
+                                <div className="govuk-grid-row">
+                                    <div className="govuk-grid-column-full">
+                                        <h2 className="govuk-heading-m">Evidence Analysis Results</h2>
+                                        
+                                        <button
+                                            onClick={() => setShowUpdatedFieldsPopup(false)}
+                                            style={{
+                                                position: 'absolute',
+                                                top: '20px',
+                                                right: '20px',
+                                                border: 'none',
+                                                background: 'transparent',
+                                                cursor: 'pointer',
+                                                padding: '5px',
+                                                fontSize: '24px',
+                                                color: '#0b0c0c',
+                                                width: '44px',
+                                                height: '44px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center'
+                                            }}
+                                            className="govuk-button--secondary"
+                                            aria-label="Close document analysis results"
+                                        >
+                                            ×
+                                        </button>
+                                        
+                                        {/* Document type detection */}
+                                        <div className="govuk-panel govuk-panel--confirmation" style={{ 
+                                            backgroundColor: '#f3f2f1', 
+                                            color: '#0b0c0c',
+                                            textAlign: 'left',
+                                            padding: '15px'
+                                        }}>
+                                            <h3 className="govuk-panel__title" style={{ 
+                                                fontSize: '19px', 
+                                                marginBottom: '5px',
+                                                color: '#0b0c0c'
+                                            }}>
+                                                Document Type Detected
+                                            </h3>
+                                            <div className="govuk-panel__body" style={{ fontSize: '16px' }}>
+                                                {extractedFields && extractedFields.documentType ? 
+                                                    extractedFields.documentType.value : 
+                                                    'Evidence Document'}
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="govuk-grid-row govuk-!-margin-top-5">
+                                            {/* Extracted data */}
+                                            <div className="govuk-grid-column-one-half">
+                                                <h3 className="govuk-heading-s">Extracted Information</h3>
+                                                <dl className="govuk-summary-list">
+                                                    {extractedFields && Object.keys(extractedFields).length > 0 ? (
+                                                        Object.entries(extractedFields)
+                                                            .filter(([field]) => field !== 'documentType')
+                                                            .map(([field, info]) => (
+                                                                <div key={field} className="govuk-summary-list__row">
+                                                                    <dt className="govuk-summary-list__key">{field}</dt>
+                                                                    <dd className="govuk-summary-list__value">
+                                                                        {info.value}
+                                                                        <details className="govuk-details govuk-!-margin-top-1 govuk-!-margin-bottom-1">
+                                                                            <summary className="govuk-details__summary">
+                                                                                <span className="govuk-details__summary-text">
+                                                                                    Analysis details
+                                                                                </span>
+                                                                            </summary>
+                                                                            <div className="govuk-details__text">
+                                                                                {info.reasoning}
+                                                                            </div>
+                                                                        </details>
+                                                                    </dd>
+                                                                </div>
+                                                            ))
+                                                    ) : (
+                                                        <div className="govuk-summary-list__row">
+                                                            <dt className="govuk-summary-list__key">No data extracted</dt>
+                                                            <dd className="govuk-summary-list__value">The system couldn't extract relevant information from this document</dd>
+                                                        </div>
+                                                    )}
+                                                </dl>
+                                            </div>
+
+                                            {/* Form fields updated */}
+                                            <div className="govuk-grid-column-one-half">
+                                                <h3 className="govuk-heading-s">Form Fields Updated</h3>
+                                                {updatedFields.length > 0 ? (
+                                                    <ul className="govuk-list govuk-list--bullet">
+                                                        {updatedFields.map(field => (
+                                                            <li key={field}>{field}</li>
+                                                        ))}
+                                                    </ul>
+                                                ) : (
+                                                    <p className="govuk-body">No form fields were updated.</p>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="govuk-button-group govuk-!-margin-top-6">
+                                            <button 
+                                                className="govuk-button" 
+                                                onClick={() => setShowUpdatedFieldsPopup(false)}
+                                            >
+                                                Continue
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
