@@ -1,1 +1,61 @@
+# Environment files
 .env
+.venv/
+venv/
+testvenv/
+**/venv/
+**/.venv/
+**/__pycache__/
+**/*.pyc
+
+# Logs
+*.log
+app.log
+**/app.log
+**/agent.log
+
+# Database files
+**/chroma_db/chroma.sqlite3
+**/chroma_db/*/
+**/chroma_db_backup_*/
+
+# Uploaded files
+**/uploads/
+
+# Backup files
+*_old.*
+*.bak
+*_backup*
+
+# Node.js
+node_modules/
+**/node_modules/
+
+# Test files
+*_test.json
+*_test_*.json
+
+# Temporary VS Code workspace files
+*.code-workspace
+
+# Cached files
+**/.pytest_cache/
+**/.coverage
+**/.cache/
+**/__pycache__/
+
+# Compiled files
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/*.so
+**/*.dll
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
