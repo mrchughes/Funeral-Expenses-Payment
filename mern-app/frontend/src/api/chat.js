@@ -16,33 +16,36 @@ const API_ENDPOINTS = [
  * @param {string} message - The user's message to send to the AI agent
  * @returns {Promise<string>} - The AI agent's response message
  */
-export async function sendChatMessage(message) {
+export async function sendChatMessage(message, history = []) {
   console.log("[CHAT API] Sending message:", message);
-  
+
   // Try each endpoint in sequence until one works
   let lastError = null;
-  
+
   for (const endpoint of API_ENDPOINTS) {
     console.log(`[CHAT API] Trying endpoint: ${endpoint}`);
-    
+
     try {
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input: message })
+        body: JSON.stringify({
+          query: message,
+          history: history
+        })
       });
-      
+
       console.log(`[CHAT API] Response status from ${endpoint}:`, response.status);
-      
+
       if (!response.ok) {
         console.warn(`[CHAT API] Endpoint ${endpoint} returned status ${response.status}`);
         lastError = new Error(`Server responded with ${response.status}: ${response.statusText}`);
         continue;
       }
-      
+
       const data = await response.json();
       console.log("[CHAT API] Received response data:", data);
-      
+
       if (data && data.response) {
         console.log("[CHAT API] Successfully received response from:", endpoint);
         return data.response;
@@ -56,7 +59,7 @@ export async function sendChatMessage(message) {
       lastError = error;
     }
   }
-  
+
   // If we get here, all endpoints failed
   console.error("[CHAT API] All endpoints failed, last error:", lastError);
   throw lastError || new Error("Failed to connect to chat service");

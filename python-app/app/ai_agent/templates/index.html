@@ -13,7 +13,8 @@
     <style>
         /* Custom Processing Indicator Styles */
         .processing-indicator {
-            display: none; /* Hidden by default */
+            display: none;
+            /* Hidden by default */
             align-items: center;
             justify-content: center;
             margin: 10px auto;
@@ -25,7 +26,7 @@
             text-align: center;
             width: 100%;
         }
-        
+
         .spinner {
             border: 5px solid rgba(255, 255, 255, 0.3);
             border-radius: 50%;
@@ -35,17 +36,37 @@
             margin-right: 15px;
             animation: spin 1s linear infinite;
         }
-        
+
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Source info styling */
+        .source-info {
+            font-size: 0.8em;
+            margin-top: 5px;
+            color: #505a5f;
+        }
+
+        /* Agent mode indicator */
+        #agent-indicator {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
         }
     </style>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
         // Global processing state flag
         window.isProcessingFile = false;
-        
+
         $(document).ready(function () {
             // Auto-scroll to bottom of messages
             function scrollToBottom() {
@@ -58,7 +79,7 @@
 
             // Function to send a message
             function sendMessage() {
-                var message = $("#user-input").val().trim();
+                var message = $("#message-input").val().trim();
                 if (message) {
                     // Add user message to the chat
                     $("#chat-messages").append(
@@ -68,7 +89,7 @@
                     );
 
                     // Clear input
-                    $("#user-input").val("");
+                    $("#message-input").val("");
 
                     // Scroll to bottom
                     scrollToBottom();
@@ -94,7 +115,7 @@
                             // Remove typing indicator
                             $("#typing-indicator").remove();
 
-                            // Get response source type (direct_llm, rag, or web)
+                            // Get response source type (direct_llm, rag, web, or fep_policy)
                             var sourceType = response.source || "rag"; // Default to RAG for this application
                             var sourceLabel = "";
                             var sourceClass = "";
@@ -111,6 +132,9 @@
                             } else if (sourceType === "web") {
                                 sourceLabel = "Web Search";
                                 sourceClass = "source-web";
+                            } else if (sourceType === "fep_policy") {
+                                sourceLabel = "Policy Document";
+                                sourceClass = "source-rag";  // Use the same styling as RAG
                             }
 
                             // Add AI response with source information
@@ -144,13 +168,13 @@
             }
 
             // Form submission
-            $("#chat-form").submit(function (e) {
+            $("#message-form").submit(function (e) {
                 e.preventDefault();
                 sendMessage();
             });
 
             // Handle Enter key to send message (but allow shift+enter for new line)
-            $("#user-input").keydown(function (e) {
+            $("#message-input").keydown(function (e) {
                 if (e.keyCode === 13 && !e.shiftKey) {
                     e.preventDefault();
                     sendMessage();
@@ -161,19 +185,19 @@
             $("#document").change(function () {
                 if ($(this).val()) {
                     var formData = new FormData($("#upload-form")[0]);
-                    
+
                     // Show the selected filename
                     var fileName = $(this)[0].files[0].name;
                     $("#selected-file-name").text(fileName);
-                    
+
                     // First ensure any previous status is cleared
                     $("#upload-status").empty();
-                    
+
                     // Show processing indicator - ensure it's visible at all times during upload
                     $("#processing-indicator").css("display", "flex");
-                    
+
                     console.log("File selected, showing processing indicator");
-                    
+
                     // Global variable to track processing state
                     window.isProcessingFile = true;
 
@@ -187,30 +211,30 @@
                             console.log("Upload starting, processing indicator should be visible");
                             // Double-check processing indicator is visible
                             $("#processing-indicator").css("display", "flex");
-                            
+
                             // Clear upload status - we won't show the green box anymore
                             $("#upload-status").empty();
                         },
                         success: function (response) {
                             console.log("Upload successful, keeping processing indicator visible");
-                            
+
                             // Ensure processing indicator is still visible
                             $("#processing-indicator").css("display", "flex");
-                            
+
                             // We're not showing the green status box anymore
                             $("#upload-status").empty();
 
                             // Clear file input but keep filename displayed
                             $("#document").val("");
-                            
+
                             // Update RAG chunks display and document list automatically
                             // Wait longer to ensure server has fully processed the file
-                            setTimeout(function() {
+                            setTimeout(function () {
                                 console.log("Updating RAG chunks after successful upload");
                                 updateRagChunksCount();
-                                
+
                                 // Set a timer to hide the processing indicator after the update
-                                setTimeout(function() {
+                                setTimeout(function () {
                                     console.log("Processing complete, hiding indicator");
                                     window.isProcessingFile = false;
                                     $("#processing-indicator").hide();
@@ -219,11 +243,11 @@
                         },
                         error: function () {
                             console.log("Upload failed, hiding processing indicator");
-                            
+
                             // Hide processing indicator on error
                             window.isProcessingFile = false;
                             $("#processing-indicator").hide();
-                            
+
                             // No error panel, just clear the upload status
                             $("#upload-status").empty();
                         }
@@ -303,18 +327,18 @@
             // Function to get and update RAG database stats and document list
             function updateRagChunksCount() {
                 console.log("Updating RAG chunks count and document list...");
-                
+
                 // Show processing indicator if updating during a file upload
                 if (window.isProcessingFile) {
                     console.log("File is being processed, ensuring processing indicator is visible");
                     $("#processing-indicator").css("display", "flex");
                 }
-                
+
                 $.ajax({
                     type: "GET",
                     url: "/ai-agent/docs?force_reload=true&_=" + new Date().getTime(), // Add cache-busting parameter
                     cache: false,
-                    beforeSend: function() {
+                    beforeSend: function () {
                         // Double check processing indicator if we're in an upload
                         if (window.isProcessingFile) {
                             $("#processing-indicator").css("display", "flex");
@@ -329,15 +353,15 @@
                             $("#rag-chunk-count").text("0");
                             console.log("Chunk count reset to 0");
                         }
-                        
+
                         // Update document list
                         if (response.documents) {
                             // Clear the existing document list
                             $("#document-list").empty();
-                            
+
                             // Add each document to the list
                             if (response.documents.length > 0) {
-                                response.documents.forEach(function(doc) {
+                                response.documents.forEach(function (doc) {
                                     $("#document-list").append(
                                         `<div class="document-item">
                                             <div class="document-info">
@@ -360,7 +384,7 @@
                                 );
                             }
                         }
-                        
+
                         // Log to console for debugging
                         console.log("Updated RAG chunks count:", response.rag_status ? response.rag_status.total_chunk_count : 0);
                         console.log("Updated document list with", response.documents ? response.documents.length : 0, "documents");
@@ -377,7 +401,7 @@
 
             // The form submission is now handled by the document change event directly
             // So this separate event is no longer needed and has been removed to avoid double triggering
-            
+
             // Set interval to refresh RAG stats automatically every 15 seconds
             setInterval(updateRagChunksCount, 15000);
         });
@@ -432,7 +456,7 @@
                             <div class="spinner"></div>
                             <span>PROCESSING... PLEASE WAIT</span>
                         </div>
-                        
+
                         <form id="upload-form" enctype="multipart/form-data" class="govuk-form-group">
                             <label class="govuk-label govuk-label--s" for="document">
                                 Select document to upload
@@ -506,17 +530,21 @@
                             {% endfor %}
                         </div>
 
-                        <form id="chat-form">
+                        <form id="message-form">
                             <div class="chat-input-container">
-                                <div class="govuk-form-group" style="flex-grow: 1;">
-                                    <label class="govuk-label govuk-visually-hidden" for="user-input">
+                                <div class="govuk-form-group" style="width: 100%;">
+                                    <label class="govuk-label govuk-visually-hidden" for="message-input">
                                         Your message
                                     </label>
-                                    <textarea id="user-input" name="user-input" rows="3" class="govuk-textarea"
+                                    <textarea id="message-input" name="message-input" rows="3" class="govuk-textarea"
                                         placeholder="Type your message and press Enter to send..."></textarea>
                                     <span class="govuk-hint">Press Enter to send, Shift+Enter for new line</span>
                                 </div>
-                                <!-- Send button removed - press Enter to send -->
+                                <!-- Processing indicator -->
+                                <div id="processing-indicator" class="processing-indicator">
+                                    <div class="spinner"></div>
+                                    <div>Processing...</div>
+                                </div>
                             </div>
                         </form>
                     </div>
@@ -558,6 +586,11 @@
             </div>
         </div>
     </footer>
+    <!-- Agent-based implementation script -->
+    <script src="/static/js/agent-mode.js"></script>
+
+    <!-- Agent mode indicator -->
+    <div id="agent-indicator" style="position: fixed; bottom: 10px; right: 10px;"></div>
 </body>
 
 </html>

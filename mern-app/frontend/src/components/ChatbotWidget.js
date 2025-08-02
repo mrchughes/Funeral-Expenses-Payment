@@ -102,10 +102,10 @@ const ChatbotWidget = () => {
             {/* No Reset or Clear Chat buttons here */}
           </div>
 
-          <div style={{ maxHeight: 240, overflowY: "auto", marginBottom: 8 }}>
+          <div style={{ maxHeight: 240, overflowY: "auto", marginBottom: 8, width: "100%" }}>
             {messages.map((msg, i) => (
               <div key={i} style={{ textAlign: msg.from === "user" ? "right" : "left", margin: "4px 0" }}>
-                <span style={{ background: msg.from === "user" ? "#1d70b8" : "#f3f2f1", color: msg.from === "user" ? "#fff" : "#0b0c0c", borderRadius: 12, padding: "6px 12px", display: "inline-block", maxWidth: 240, wordBreak: "break-word" }}>
+                <span style={{ background: msg.from === "user" ? "#1d70b8" : "#f3f2f1", color: msg.from === "user" ? "#fff" : "#0b0c0c", borderRadius: 12, padding: "6px 12px", display: "inline-block", maxWidth: 280, wordBreak: "break-word" }}>
                   {msg.text}
                 </span>
               </div>
@@ -113,10 +113,10 @@ const ChatbotWidget = () => {
             {loading && <div className="govuk-body-s" style={{ color: "#6c757d" }}>AI is typing…</div>}
           </div>
 
-          <form onSubmit={handleSend} style={{ display: "flex", gap: 4 }}>
+          <form onSubmit={handleSend} style={{ width: "100%" }}>
             <input
               className="govuk-input"
-              style={{ flex: 1, minWidth: 0 }}
+              style={{ width: "100%" }}
               type="text"
               placeholder="Ask a question…"
               value={input}
@@ -125,15 +125,6 @@ const ChatbotWidget = () => {
               aria-label="Type your question"
               data-safe="true"
             />
-            <button
-              className="govuk-button"
-              style={{ padding: "0 12px", minWidth: 0 }}
-              disabled={loading}
-              data-action="send"
-              data-safe="true"
-            >
-              Send
-            </button>
           </form>
         </div>
       )}

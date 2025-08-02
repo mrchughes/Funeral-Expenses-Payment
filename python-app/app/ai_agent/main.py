@@ -17,6 +17,7 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langgraph.graph import StateGraph, END
 from langchain_community.tools.tavily_search import TavilySearchResults
 from typing_extensions import TypedDict
+from typing import Optional, List
 from langchain_community.vectorstores import Chroma
 from werkzeug.utils import secure_filename
 import ocr_utils
@@ -640,11 +641,18 @@ def should_use_direct_response(query):
         logging.info("[CHAT] Detected news-related question, will use web search")
         return False  # Don't use direct LLM, let it fall through to web search
     
-    # Check for math questions
-    math_patterns = ["+", "-", "*", "/", "plus", "minus", "multiply", "divide", "=", "equals", "calculate"]
+    # Check for math questions - enhanced pattern matching
+    # Special case for direct number expressions like "2+2" or "what is 2+2"
+    basic_math_regex = r'(\d+\s*[\+\-\*\/]\s*\d+)|(\d+\s*(plus|minus|times|divided by)\s*\d+)'
+    if re.search(basic_math_regex, query_lower):
+        logging.info(f"[CHAT] Detected basic math expression '{query_lower}', will use direct LLM")
+        return True
+    
+    # Check for math keywords, but only if the query is short and doesn't have policy terms
+    math_patterns = ["+", "-", "*", "/", "plus", "minus", "multiply", "divide", "=", "equals", "calculate", "sum", "difference"]
     is_math = any(pattern in query_lower for pattern in math_patterns)
-    if is_math:
-        logging.info("[CHAT] Detected math question, using direct LLM")
+    if is_math and len(query.split()) < 8:  # Short query with math terms
+        logging.info("[CHAT] Detected likely math question, using direct LLM")
         return True
     
     # Check for general knowledge indicators
@@ -669,6 +677,83 @@ class AgentState(TypedDict):
     input: str
     chat_history: list
     intermediate_steps: list
+    selected_tool: str  # The tool selected by the router
+    response: Optional[str]  # The generated response
+    source: Optional[str]  # The source of the response
+    confidence: Optional[float]  # Confidence in the response
+    tool_failed: Optional[bool]  # Whether the current tool failed
+
+# Source router function
+def source_router(state: AgentState) -> AgentState:
+    """
+    LLM-based router that decides which knowledge source to use.
+    Updates state["selected_tool"] with "rag_tool", "direct_llm_tool", or "web_search_tool"
+    """
+    query = state["input"]
+    chat_history = state.get("chat_history", [])
+    
+    logging.info(f"[ROUTER] Determining best source for: '{query}'")
+    
+    try:
+        # Use LLM to analyze and route based on query content
+        router_prompt = """
+        You are an intelligent router for a question answering system focused on the UK's Department for Work and Pensions (DWP) 
+        and specifically the Funeral Expenses Payment (FEP) scheme.
+        
+        Analyze this query and determine the best knowledge source to answer it.
+        
+        Query: {query}
+        
+        Recent conversation history:
+        {history}
+        
+        Choose ONE of the following sources:
+        - rag: If this is about DWP or FEP policy, procedures, eligibility, benefits, forms, applications, requirements, or any specific details about the funeral expenses payment scheme.
+        - direct_llm: If this is general knowledge, math, simple definitions, or topics clearly unrelated to FEP/DWP.
+        - web_search: If this requires current information, news, statistics, or specific external data not likely in policy documents.
+        
+        Return ONLY one of these exact source names: "rag", "direct_llm", or "web_search" without any explanation.
+        """
+        
+        # Format chat history for context
+        formatted_history = ""
+        if chat_history and len(chat_history) > 0:
+            recent_history = chat_history[-3:] if len(chat_history) > 3 else chat_history
+            for msg in recent_history:
+                role = msg.get("role", "")
+                content = msg.get("content", "")
+                formatted_history += f"{role}: {content}\n"
+        
+        # Use a small, fast model for routing
+        router_llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0, openai_api_key=openai_key)
+        response = router_llm.invoke([{
+            "role": "system",
+            "content": router_prompt.format(query=query, history=formatted_history)
+        }])
+        
+        # Extract just the source name and normalize
+        source = response.content.strip().lower()
+        logging.info(f"[ROUTER] Router suggested source: {source}")
+        
+        # Map to valid tool name and set default
+        if source == "rag":
+            state["selected_tool"] = "rag_tool"
+        elif source == "web_search":
+            state["selected_tool"] = "web_search_tool"
+        elif source == "direct_llm":
+            state["selected_tool"] = "direct_llm_tool"
+        else:
+            # Default to direct_llm if response is malformed
+            logging.warning(f"[ROUTER] Unexpected router response: {source}, defaulting to direct_llm")
+            state["selected_tool"] = "direct_llm_tool"
+        
+    except Exception as e:
+        logging.error(f"[ROUTER] Error in source router: {e}", exc_info=True)
+        # Default to direct_llm on error
+        state["selected_tool"] = "direct_llm_tool"
+    
+    logging.info(f"[ROUTER] Selected tool: {state['selected_tool']}")
+    return state
 
 # Initialize agent components
 def initialize_agent():
@@ -695,14 +780,23 @@ def initialize_agent():
         return None, None
 
 # Create RAG response using the database
-def create_rag_response(query, conversation_history=None):
+# Tool implementation for RAG source
+def use_rag_source(state: AgentState) -> AgentState:
+    """Use RAG to generate a response"""
     global rag_db
+    
+    query = state["input"]
+    conversation_history = state.get("chat_history", [])
+    
+    logging.info(f"[RAG_TOOL] Attempting RAG for query: '{query}'")
+    
     if rag_db is None:
         load_rag_database()
     
     if rag_db is None:
-        logging.error("[AGENT] RAG database not loaded, cannot create response")
-        return None, []
+        logging.error("[RAG_TOOL] RAG database not loaded, cannot create response")
+        state["tool_failed"] = True
+        return state
     
     try:
         # Initialize LLM for response generation
@@ -718,7 +812,7 @@ def create_rag_response(query, conversation_history=None):
         if is_fep_query:
             # Add specific FEP-related terms to enhance the query
             enhanced_query = f"{query} funeral expenses payment policy dwp eligibility"
-            logging.info(f"[AGENT] Enhanced FEP query: {enhanced_query}")
+            logging.info(f"[RAG_TOOL] Enhanced FEP query: {enhanced_query}")
         
         # If we have conversation history, include recent questions in the search query
         search_query = enhanced_query
@@ -732,30 +826,54 @@ def create_rag_response(query, conversation_history=None):
             if recent_queries:
                 # Combine the current query with recent queries for better context
                 search_query = f"{enhanced_query} {' '.join(recent_queries)}"
-                logging.info(f"[AGENT] Enhanced search query with conversation history: {search_query}")
+                logging.info(f"[RAG_TOOL] Enhanced search query with conversation history: {search_query}")
         
-        # Increase k to retrieve more potential documents
-        relevant_docs = rag_db.similarity_search_with_score(search_query, k=10)
-        
-        # Log the retrieved documents and their scores for debugging
-        logging.info(f"[AGENT] Retrieved {len(relevant_docs)} documents from RAG")
-        for i, (doc, score) in enumerate(relevant_docs):
-            source = doc.metadata.get('source_doc', 'Unknown')
-            logging.info(f"[AGENT] Doc {i+1}: Score={score}, Source={source}, Content={doc.page_content[:100]}...")
-        
-        # Filter docs by relevance score (lower is better in OpenAI embeddings)
-        # Use a more lenient threshold to include more potentially relevant documents
-        threshold = 0.5  # Much more lenient threshold to ensure we get some results
-        filtered_docs = [doc for doc, score in relevant_docs if score < threshold]
-        
-        if not filtered_docs and relevant_docs:
-            # If no docs passed the threshold but we have results, take the top 3
-            logging.info(f"[AGENT] No docs under threshold {threshold}, using top 3 docs instead")
-            filtered_docs = [doc for doc, _ in relevant_docs[:3]]
+        try:
+            # Try with similarity_search_with_score first
+            relevant_docs = rag_db.similarity_search_with_score(search_query, k=10)
+            
+            # Log the retrieved documents and their scores for debugging
+            logging.info(f"[RAG_TOOL] Retrieved {len(relevant_docs)} documents from RAG")
+            for i, (doc, score) in enumerate(relevant_docs[:3]):  # Log just the first few docs
+                source = doc.metadata.get('source_doc', 'Unknown')
+                logging.info(f"[RAG_TOOL] Doc {i+1}: Score={score}, Source={source}")
+            
+            # Filter docs by relevance score (lower is better in OpenAI embeddings)
+            # Check if the best match is too poor (high score)
+            poor_match_threshold = 0.45  # Any score above this is considered a poor match
+            best_score = relevant_docs[0][1] if relevant_docs else 1.0
+            
+            if best_score > poor_match_threshold:
+                # The best match is still too poor to use
+                logging.info(f"[RAG_TOOL] Best document score {best_score} is above threshold {poor_match_threshold}, indicating poor relevance")
+                logging.info(f"[RAG_TOOL] Query '{query}' not well-suited for RAG")
+                state["tool_failed"] = True
+                return state
+                
+            # If we get here, at least one document has good relevance
+            # Use a more lenient threshold to include more related documents
+            threshold = 0.5
+            filtered_docs = [doc for doc, score in relevant_docs if score < threshold]
+            
+            if not filtered_docs and relevant_docs:
+                # If no docs passed the threshold but we have good results, take just the top match
+                logging.info(f"[RAG_TOOL] No docs under threshold {threshold}, using top match only")
+                filtered_docs = [relevant_docs[0][0]]
+                
+        except Exception as search_error:
+            logging.error(f"[RAG_TOOL] Error with similarity_search_with_score: {search_error}")
+            # Fallback to regular similarity search without scores
+            try:
+                filtered_docs = rag_db.similarity_search(search_query, k=5)
+                logging.info(f"[RAG_TOOL] Used fallback similarity_search, found {len(filtered_docs)} docs")
+            except Exception as fallback_error:
+                logging.error(f"[RAG_TOOL] Fallback search also failed: {fallback_error}")
+                filtered_docs = []
         
         if not filtered_docs:
-            logging.info(f"[AGENT] No relevant documents found in RAG database")
-            return None, []
+            logging.info(f"[RAG_TOOL] No relevant documents found in RAG database")
+            state["tool_failed"] = True
+            return state
         
         # Format the context from the documents
         context = "\n\n".join([f"Document: {doc.metadata.get('source_doc', 'Unknown')}\n{doc.page_content}" for doc in filtered_docs])
@@ -783,7 +901,7 @@ CRITICAL INSTRUCTIONS:
         
         # Add conversation history if available
         if conversation_history:
-            # Add only the most recent conversation turns (limit to 5 for context window)
+            # Add only the most recent conversation turns (limit to 10 for context window)
             recent_history = conversation_history[-10:] if len(conversation_history) > 10 else conversation_history
             messages.extend(recent_history)
         
@@ -791,15 +909,409 @@ CRITICAL INSTRUCTIONS:
         if not messages or messages[-1]["role"] != "user":
             messages.append({"role": "user", "content": query})
         
-        logging.info(f"[AGENT] Using RAG with {len(messages)} message history")
+        logging.info(f"[RAG_TOOL] Using RAG with {len(messages)} message history")
         
         response = llm.invoke(messages)
         
-        logging.info(f"[AGENT] Successfully created RAG response with {len(relevant_docs)} documents")
-        return response.content, relevant_docs
+        # Update state with response
+        state["response"] = response.content
+        state["source"] = "rag"
+        state["confidence"] = 0.9  # High confidence for RAG responses
+        state["tool_failed"] = False
+        
+        logging.info(f"[RAG_TOOL] Successfully created RAG response")
+        return state
+        
     except Exception as e:
-        logging.error(f"[AGENT] Error creating RAG response: {e}", exc_info=True)
+        logging.error(f"[RAG_TOOL] Error creating RAG response: {e}", exc_info=True)
+        state["tool_failed"] = True
+        return state
+
+# Legacy function for compatibility
+def create_rag_response(query, conversation_history=None):
+    """Legacy wrapper for backwards compatibility"""
+    state = {
+        "input": query,
+        "chat_history": conversation_history or []
+    }
+    
+    result_state = use_rag_source(state)
+    
+    if result_state.get("tool_failed", True):
         return None, []
+    
+    # Create a mock result set for compatibility
+    mock_docs = [{"content": "Legacy compatibility mode", "metadata": {"source_doc": "Legacy"}}]
+    
+    return result_state.get("response"), mock_docs
+
+# Tool implementation for direct LLM
+def use_direct_llm_tool(state: AgentState) -> AgentState:
+    """Use direct LLM to generate a response"""
+    query = state["input"]
+    conversation_history = state.get("chat_history", [])
+    
+    logging.info(f"[DIRECT_LLM] Generating direct response for query: '{query}'")
+    
+    try:
+        # Initialize LLM
+        llm = ChatOpenAI(temperature=0.3, openai_api_key=openai_key)
+        
+        # Format messages for the LLM
+        messages = []
+        
+        # Add system prompt
+        messages.append({
+            "role": "system", 
+            "content": """You are a helpful assistant for the Department for Work and Pensions (DWP), specializing in Funeral Expenses Payment (FEP) policy.
+
+Your role:
+1. Answer general knowledge questions accurately and concisely.
+2. For any questions about Funeral Expenses Payment policy, state when you're providing general information rather than specific policy details.
+3. Maintain a compassionate tone as you may be speaking with someone who has been bereaved.
+4. For complex calculations or specific numbers, clearly show your reasoning.
+5. If asked about current events or very recent information, acknowledge that your knowledge may not be current.
+
+Always be helpful, accurate, and compassionate.
+"""
+        })
+        
+        # Add conversation history if available
+        if conversation_history:
+            # Add only the most recent conversation turns
+            recent_history = conversation_history[-5:] if len(conversation_history) > 5 else conversation_history
+            messages.extend(recent_history)
+        
+        # Add current query if not already included
+        if not messages or messages[-1]["role"] != "user":
+            messages.append({"role": "user", "content": query})
+        
+        logging.info(f"[DIRECT_LLM] Using direct LLM with {len(messages)} message history")
+        
+        response = llm.invoke(messages)
+        
+        # Update state with response
+        state["response"] = response.content
+        state["source"] = "direct_llm"
+        state["confidence"] = 0.8  # Medium confidence for general knowledge
+        state["tool_failed"] = False
+        
+        logging.info("[DIRECT_LLM] Successfully generated direct response")
+        return state
+        
+    except Exception as e:
+        logging.error(f"[DIRECT_LLM] Error generating direct response: {e}", exc_info=True)
+        state["tool_failed"] = True
+        return state
+
+# Tool implementation for web search
+def use_web_search_tool(state: AgentState) -> AgentState:
+    """Use web search to generate a response"""
+    query = state["input"]
+    conversation_history = state.get("chat_history", [])
+    
+    logging.info(f"[WEB_SEARCH] Attempting web search for query: '{query}'")
+    
+    try:
+        # Initialize chat model
+        chat_model = ChatOpenAI(temperature=0.2, openai_api_key=openai_key)
+        
+        # Initialize web search
+        if not tavily_key:
+            logging.error("[WEB_SEARCH] No Tavily API key available for web search")
+            state["tool_failed"] = True
+            return state
+            
+        web_search = TavilySearchResults(api_key=tavily_key, max_results=3)
+        
+        # Perform web search
+        search_results = web_search.invoke(query)
+        
+        if not search_results:
+            logging.info("[WEB_SEARCH] No web search results found")
+            state["tool_failed"] = True
+            return state
+        
+        # Format search results for better context
+        def format_result(result):
+            source = result.get('source') or result.get('url') or result.get('title') or 'Unknown Source'
+            content = result.get('content') or result.get('snippet') or result.get('text') or ''
+            title = result.get('title', '')
+            return {
+                "source": source,
+                "content": content,
+                "title": title
+            }
+        
+        formatted_results = [format_result(r) for r in search_results]
+        
+        # Extract titles/headlines if available
+        titles = [r["title"] for r in formatted_results if r["title"]]
+        titles_text = "\n".join([f"- {title}" for title in titles]) if titles else "No specific titles found."
+        
+        # Full context for LLM
+        context = "\n\n".join([f"Source: {r['source']}\nTitle: {r['title']}\n{r['content']}" for r in formatted_results])
+
+        # Format messages for the chat model
+        messages = []
+        
+        # Add system prompt with context
+        messages.append({
+            "role": "system", 
+            "content": f"""You are a helpful assistant for the Department for Work and Pensions (DWP), specializing in Funeral Expenses Payment (FEP) policy.
+Use the following information from web search to answer the user's question:
+
+{context}
+
+Titles/Headlines found:
+{titles_text}
+
+Instructions:
+1. Always assume questions are about FEP or DWP context unless clearly stated otherwise.
+2. Present information in a clear, organized format - use bullet points for lists of items.
+3. If the search results contain relevant information but not exactly what was asked, provide a helpful summary of what IS available.
+4. Only say there is no information if the results are completely irrelevant.
+5. For FEP policy queries, focus on official DWP information and eligibility criteria.
+6. Be conversational, compassionate, and helpful in your response since you're likely speaking with someone who has been bereaved.
+7. Maintain conversation context with previous messages.
+8. Keep answers concise and focused on helping claimants understand FEP eligibility and process.
+9. Clearly indicate that information comes from web searches.
+"""
+        })
+        
+        # Add conversation history if available
+        if conversation_history:
+            # Add only the most recent conversation turns (limit to keep context window manageable)
+            recent_history = conversation_history[-5:] if len(conversation_history) > 5 else conversation_history
+            messages.extend(recent_history)
+        
+        # Add current query if not already included
+        if not messages or messages[-1]["role"] != "user":
+            messages.append({"role": "user", "content": query})
+        
+        logging.info(f"[WEB_SEARCH] Using web search with {len(messages)} message history")
+        
+        response = chat_model.invoke(messages)
+        
+        # Update state with response
+        state["response"] = response.content
+        state["source"] = "web"
+        state["confidence"] = 0.7  # Lower confidence for web search
+        state["tool_failed"] = False
+        
+        logging.info("[WEB_SEARCH] Successfully generated web search response")
+        return state
+        
+    except Exception as e:
+        logging.error(f"[WEB_SEARCH] Error generating web search response: {e}", exc_info=True)
+        state["tool_failed"] = True
+        return state
+# Create a response based on the selected tool's output
+def generate_final_response(state: AgentState) -> AgentState:
+    """Create the final response based on tool outputs"""
+    # If a tool has already generated a response, we're done
+    if "response" in state and state.get("tool_failed", True) is False:
+        logging.info(f"[FINAL] Using response from source: {state.get('source', 'unknown')}")
+        return state
+    
+    # If the selected tool failed, try fallback options
+    if state.get("tool_failed", False):
+        logging.info(f"[FINAL] Selected tool {state.get('selected_tool', 'unknown')} failed, trying fallbacks")
+        
+        # Define fallback order: RAG -> Direct LLM -> Web Search -> Default message
+        fallbacks = ["rag_tool", "direct_llm_tool", "web_search_tool"]
+        original_tool = state.get("selected_tool", "unknown")
+        
+        # Skip the original tool in fallbacks
+        try:
+            fallbacks.remove(original_tool)
+        except ValueError:
+            pass
+        
+        # Try each fallback in order
+        for fallback_tool in fallbacks:
+            logging.info(f"[FINAL] Trying fallback: {fallback_tool}")
+            
+            # Make a copy of state to avoid affecting the original
+            fallback_state = state.copy()
+            fallback_state["selected_tool"] = fallback_tool
+            fallback_state["tool_failed"] = False  # Reset failure flag
+            
+            # Execute fallback tool
+            if fallback_tool == "rag_tool":
+                fallback_state = use_rag_source(fallback_state)
+            elif fallback_tool == "direct_llm_tool":
+                fallback_state = use_direct_llm_tool(fallback_state)
+            elif fallback_tool == "web_search_tool":
+                fallback_state = use_web_search_tool(fallback_state)
+                
+            # If fallback succeeded, use its response
+            if not fallback_state.get("tool_failed", True) and "response" in fallback_state:
+                logging.info(f"[FINAL] Using fallback {fallback_tool} response")
+                # Copy successful fallback response to original state
+                state["response"] = fallback_state["response"]
+                state["source"] = f"{fallback_tool} (fallback from {original_tool})"
+                state["tool_failed"] = False
+                return state
+    
+    # If all tools failed, provide a default response
+    if state.get("tool_failed", True) or "response" not in state:
+        logging.warning("[FINAL] All tools failed, using default response")
+        state["response"] = "I'm sorry, I'm having trouble generating a response at the moment. Please try rephrasing your question or try again later."
+        state["source"] = "default_fallback"
+        state["tool_failed"] = False
+    
+    return state
+
+# Create the LangGraph workflow
+def create_agent_workflow():
+    """Create and return a LangGraph workflow for intelligent source selection"""
+    try:
+        # Initialize the workflow
+        workflow = StateGraph(AgentState)
+        
+        # Add nodes to the workflow
+        workflow.add_node("source_router", source_router)
+        workflow.add_node("use_rag", use_rag_source)
+        workflow.add_node("use_direct_llm", use_direct_llm_tool)
+        workflow.add_node("use_web_search", use_web_search_tool)
+        workflow.add_node("generate_final_response", generate_final_response)
+        
+        # Define the edges (connections between nodes)
+        # First, route from the router to the appropriate tool based on the selected_tool
+        workflow.add_conditional_edges(
+            "source_router",
+            lambda state: state.get("selected_tool", "direct_llm_tool"),
+            {
+                "rag_tool": "use_rag",
+                "direct_llm_tool": "use_direct_llm",
+                "web_search_tool": "use_web_search"
+            }
+        )
+        
+        # Connect all tools to final response generator
+        workflow.add_edge("use_rag", "generate_final_response")
+        workflow.add_edge("use_direct_llm", "generate_final_response")
+        workflow.add_edge("use_web_search", "generate_final_response")
+        
+        # Set final response as the end node
+        workflow.add_edge("generate_final_response", END)
+        
+        # Set the entry point
+        workflow.set_entry_point("source_router")
+        
+        # Compile the workflow
+        return workflow.compile()
+    except Exception as e:
+        logging.error(f"[WORKFLOW] Error creating agent workflow: {e}", exc_info=True)
+        return None
+
+# Cached workflow to avoid recreation on every request
+_agent_workflow = None
+
+def get_agent_workflow():
+    """Get or create the agent workflow"""
+    global _agent_workflow
+    if _agent_workflow is None:
+        _agent_workflow = create_agent_workflow()
+    return _agent_workflow
+
+# Create a new chat endpoint that uses the agent workflow
+@app.route('/ai-agent/agent-chat', methods=['POST'])
+def agent_chat():
+    """New endpoint that uses the agent-based workflow"""
+    if not request.is_json:
+        return jsonify({"error": "Request must be JSON"}), 400
+    
+    data = request.get_json()
+    
+    if 'input' not in data:
+        return jsonify({"error": "Input query is required"}), 400
+    
+    query = data['input']
+    conversation_history = data.get('history', [])
+    
+    # Log the request with clear AGENT indicator
+    history_len = len(conversation_history) if conversation_history else 0
+    logging.info(f"[AGENT-CHAT] *** USING INTELLIGENT AGENT *** Received query: '{query}' with {history_len} messages in conversation history")
+    
+    # Check if user explicitly requested web search
+    web_search_requested = False
+    if 'use_web_search' in data and data['use_web_search']:
+        web_search_requested = True
+        logging.info("[AGENT-CHAT] Web search explicitly requested")
+    
+    # Initialize time tracking
+    start_time = time.time()
+    
+    # Set up the initial state for the workflow
+    initial_state = {
+        "input": query,
+        "chat_history": conversation_history,
+        "intermediate_steps": [],
+        "tool_failed": False
+    }
+    
+    # Override tool selection if web search was explicitly requested
+    if web_search_requested and tavily_key:
+        logging.info("[AGENT-CHAT] Overriding tool selection with web_search_tool")
+        initial_state["selected_tool"] = "web_search_tool"
+    
+    try:
+        # Get or create the workflow
+        workflow = get_agent_workflow()
+        if workflow is None:
+            raise Exception("Failed to create agent workflow")
+        
+        # Run the workflow
+        result = workflow.invoke(initial_state)
+        
+        # Extract response info from result
+        response_text = result.get("response", "")
+        response_source = result.get("source", "unknown")
+        
+        # Extract sources for attribution (for RAG and web search)
+        sources = []
+        if response_source.startswith("rag"):
+            # For RAG, just use a generic source since we don't have specific doc sources yet
+            sources = ["FEP Policy Documents"]
+        elif response_source.startswith("web"):
+            # For web search, we'd ideally extract URLs but for now use generic
+            sources = ["Web Search Results"]
+        
+        # Check if all tools failed
+        if response_source == "default_fallback":
+            logging.warning("[AGENT-CHAT] All tools failed, returning default response")
+        else:
+            logging.info(f"[AGENT-CHAT] Successfully generated {response_source} response")
+        
+    except Exception as e:
+        # If the workflow fails, use a simple fallback
+        logging.error(f"[AGENT-CHAT] Error running agent workflow: {e}", exc_info=True)
+        response_text = "I'm sorry, I'm having trouble processing your question. Please try again later."
+        response_source = "error"
+        sources = []
+    
+    # Calculate and log response time
+    elapsed_time = time.time() - start_time
+    logging.info(f"[AGENT-CHAT] *** INTELLIGENT AGENT *** Generated {response_source} response in {elapsed_time:.2f} seconds")
+    
+    # Provide detailed logging to help with evaluation
+    if response_source != "error" and response_source != "default_fallback":
+        gc.collect()  # Help prevent memory issues by cleaning up
+        
+        # Log the first bit of the response for debugging
+        response_preview = response_text[:100] + "..." if len(response_text) > 100 else response_text
+        logging.info(f"[AGENT-CHAT] Response preview: {response_preview}")
+        
+    # Return the response
+    return jsonify({
+        "success": True,
+        "response": response_text,
+        "source": response_source,
+        "sources": sources,
+        "processing_time": elapsed_time
+    })
 
 @app.route('/ai-agent/chat', methods=['POST'])
 def chat():
@@ -807,14 +1319,14 @@ def chat():
     try:
         # Get input from request
         data = request.get_json()
-        if not data or 'input' not in data:
+        if not data or ('input' not in data and 'query' not in data):
             return jsonify({
                 'success': False,
-                'error': 'Invalid request, missing input'
+                'error': 'Invalid request, missing input or query'
             }), 400
         
-        user_input = data['input']
-        logging.info(f"[CHAT] Received chat request: {user_input}")
+        user_input = data.get('input') if 'input' in data else data.get('query')
+        logging.info(f"[CHAT] Received query: '{user_input}' with {len(data.get('history', []))} messages in conversation history")
         
         # Get conversation history if available
         conversation_history = data.get('history', [])
@@ -900,8 +1412,115 @@ def chat():
             except Exception as e:
                 logging.error(f"[CHAT] Error using RAG: {e}", exc_info=True)
         
+        # CRITICAL CHECK: If the query is specifically about FEP or Funeral Expenses, force using RAG with a retry
+        fep_specific_terms = ["fep", "funeral expenses", "funeral payment", "funeral expenses payment"]
+        is_explicitly_fep = False
+        
+        for term in fep_specific_terms:
+            if term in user_input.lower():
+                is_explicitly_fep = True
+                logging.info(f"[CHAT] Query explicitly about FEP/Funeral Expenses ('{term}'). Forcing RAG with retry.")
+                break
+        
+        if is_explicitly_fep and not response and rag_db is not None:
+            # If we're here, it means the first RAG attempt failed but we have a FEP-specific question
+            # We'll try again with even more lenient retrieval and explicit FEP terms
+            try:
+                # Force FEP context into query
+                enhanced_query = f"{user_input} funeral expenses payment FEP policy eligibility DWP benefit"
+                logging.info(f"[CHAT] Retrying RAG with enhanced query: {enhanced_query}")
+                
+                # Get any documents that might be relevant, no filtering
+                relevant_docs = rag_db.similarity_search(enhanced_query, k=15)
+                
+                if relevant_docs:
+                    # Format context using all retrieved docs
+                    context = "\n\n".join([f"Document: {doc.metadata.get('source_doc', 'Unknown')}\n{doc.page_content}" for doc in relevant_docs[:5]])
+                    
+                    # Create explicit FEP policy messages
+                    messages = [{
+                        "role": "system", 
+                        "content": f"""You are a specialist advisor for the DWP's Funeral Expenses Payment (FEP) scheme.
+CRITICAL: The user has asked specifically about FEP policy. Use ONLY the following information to answer:
+
+{context}
+
+IMPORTANT INSTRUCTIONS:
+1. Base your answer EXCLUSIVELY on the information provided above.
+2. If you can't find specific details in the provided information, say: "I don't have complete information about that aspect of FEP policy in my documents."
+3. DO NOT use your general knowledge about funeral payments.
+4. Keep responses focused on policy information from the provided documents.
+"""
+                    }, {"role": "user", "content": user_input}]
+                    
+                    # Use a low temperature for factual responses
+                    llm = ChatOpenAI(temperature=0, openai_api_key=openai_key)
+                    forced_rag_response = llm.invoke(messages)
+                    
+                    response = forced_rag_response.content
+                    source = "rag"  # This was a RAG response
+                    logging.info("[CHAT] Successfully generated forced RAG response for explicit FEP question")
+                    
+                    # Return the forced RAG response
+                    return jsonify({
+                        'success': True,
+                        'response': response,
+                        'source': source
+                    })
+            except Exception as e:
+                logging.error(f"[CHAT] Error generating forced RAG response: {e}", exc_info=True)
+                
+        # Add a fallback for FEP questions when RAG fails completely
+        if is_explicitly_fep and not response:
+            try:
+                # Use a special FEP-focused direct prompt as fallback
+                logging.info("[CHAT] Using FEP-focused fallback prompt due to RAG issues")
+                
+                messages = [{
+                    "role": "system", 
+                    "content": """You are a specialist advisor for the Department for Work and Pensions (DWP) Funeral Expenses Payment (FEP) scheme.
+
+CRITICAL INSTRUCTIONS FOR FEP POLICY QUESTIONS:
+1. You are answering a question specifically about the Funeral Expenses Payment (FEP) scheme.
+2. FEP is a UK government scheme that helps people on qualifying benefits with funeral costs.
+3. Key facts about FEP:
+   - It helps pay for burial or cremation fees, travel to arrange/attend the funeral
+   - It's available to people receiving certain benefits (Universal Credit, Income Support, etc.)
+   - The person must be responsible for the funeral arrangements
+   - Applications must be made within 6 months of the funeral
+   - It doesn't usually cover the full cost of the funeral
+4. Be clear that your response is based on general policy knowledge, not specific DWP documents.
+5. If asked about very specific details, suggest the user contact DWP directly.
+6. Maintain a compassionate tone as you're likely speaking with someone who has been bereaved.
+
+Focus exclusively on FEP policy information. Do not include general funeral advice unrelated to the FEP scheme.
+"""
+                }, {"role": "user", "content": user_input}]
+                
+                # Use a low temperature for factual responses
+                llm = ChatOpenAI(temperature=0, openai_api_key=openai_key)
+                forced_response = llm.invoke(messages)
+                
+                response = forced_response.content
+                source = "fep_policy"  # This was a specialized FEP response
+                logging.info("[CHAT] Generated FEP-focused response without RAG")
+                
+                # Return the FEP-focused response
+                return jsonify({
+                    'success': True,
+                    'response': response,
+                    'source': source
+                })
+            except Exception as fallback_error:
+                logging.error(f"[CHAT] Error generating FEP fallback response: {fallback_error}", exc_info=True)
+        
         # For non-policy questions, analyze if it's a general knowledge question
         is_general_knowledge = should_use_direct_response(user_input)
+        
+        # Block direct LLM for anything that mentions FEP or funeral expenses
+        if is_explicitly_fep:
+            logging.info("[CHAT] Blocked direct LLM for explicit FEP question")
+            is_general_knowledge = False
         
         # For general knowledge questions, try direct LLM
         if is_general_knowledge:
@@ -1135,6 +1754,54 @@ def index():
     
     return render_template('index.html', documents=documents)
 
+# Helper function to determine the best source for UI endpoint
+def determine_best_source(query):
+    """
+    Simplified version of source_router for UI use
+    Returns the best source for a given query: 'rag', 'direct_llm', or 'web_search'
+    """
+    try:
+        # Initialize chat model
+        llm = ChatOpenAI(temperature=0, openai_api_key=openai_key)
+        
+        # Build router prompt
+        router_prompt = """
+        You are an intelligent router for a question answering system focused on the UK's Department for Work and Pensions (DWP) 
+        and specifically the Funeral Expenses Payment (FEP) scheme.
+        
+        Analyze this query and determine the best knowledge source to answer it.
+        
+        Query: {query}
+        
+        Choose ONE of the following sources:
+        - rag: If this is about DWP or FEP policy, procedures, eligibility, benefits, forms, applications, requirements, or any specific details about the funeral expenses payment scheme.
+        - direct_llm: If this is general knowledge, math, simple definitions, or topics clearly unrelated to FEP/DWP.
+        - web_search: If this requires current information, news, statistics, or specific external data not likely in policy documents.
+        
+        Return ONLY one of these exact source names: "rag", "direct_llm", or "web_search" without any explanation.
+        """
+        
+        formatted_prompt = router_prompt.format(query=query)
+        
+        # Make an API call to determine the source
+        messages = [{"role": "user", "content": formatted_prompt}]
+        response = llm.invoke(messages)
+        
+        # Extract the source from the response
+        source = response.content.strip().lower()
+        
+        # Validate the source
+        valid_sources = ["rag", "direct_llm", "web_search"]
+        if source not in valid_sources:
+            logging.warning(f"[UI_ROUTER] Invalid source returned: '{source}', defaulting to direct_llm")
+            return "direct_llm"
+        
+        return source
+    
+    except Exception as e:
+        logging.error(f"[UI_ROUTER] Error determining source: {e}", exc_info=True)
+        return "direct_llm"  # Default fallback
+
 # Route for handling chat messages from the UI
 @app.route('/send_message', methods=['POST'])
 def ui_send_message():
@@ -1150,82 +1817,175 @@ def ui_send_message():
             }), 400
         
         user_input = data['message']
-        logging.info(f"[UI_CHAT] Received chat message: {user_input}")
-        
-        # Initialize chat model
-        if not openai_key:
-            logging.error("[UI_CHAT] OpenAI API key not available")
-            return jsonify({
-                'success': False, 
-                'error': 'AI service is not configured properly'
-            }), 500
+        logging.info(f"[UI_CHAT] Received message: '{user_input}'")
         
         # Initialize agent components
         chat_model, web_search = initialize_agent()
         
-        response = ""
-        source = "direct_llm"  # Default source
+        # Create input state for the router
+        state = {
+            "input": user_input,
+            "chat_history": []  # UI doesn't maintain history yet
+        }
         
-        # ALWAYS try RAG first for this domain (Funeral Expenses Payment)
-        logging.info("[UI_CHAT] Always attempting RAG first for domain-specific question")
+        # First determine the best source using our helper function
+        logging.info(f"[UI_CHAT] Determining best source for query")
+        selected_source = determine_best_source(user_input)
+        logging.info(f"[UI_CHAT] Router suggested source: {selected_source}")
         
-        # Extended list of policy keywords for more accurate detection
-        policy_keywords = [
-            # Core FEP terms
-            "fep", "funeral expenses", "funeral payment", "funeral expenses payment",
-            # DWP terms
-            "dwp", "department for work", "pension", "benefits", "policy", 
-            # Application terms
-            "eligibility", "payment", "claim", "application", "qualifying", "qualify",
-            # Funeral terms
-            "funeral", "expense", "death", "bereavement", "burial", "cremation",
-            # Support terms
-            "support", "help", "assistance", "aid", "financial", "fund",
-            # Question patterns
-            "how do i", "how to", "when can", "who is eligible", "what documents"
-        ]
+        # Process based on the selected source
+        response = None
+        source_type = selected_source
         
-        # Check for policy-related keywords in a case-insensitive way
-        policy_question = False
-        matched_keyword = None
-        user_input_lower = user_input.lower()
+        if selected_source == "rag":
+            # Use RAG tool
+            rag_state = use_rag_source(state)
+            if not rag_state.get("tool_failed", True):
+                response = rag_state.get("response")
+                source_type = "rag"
+                logging.info(f"[UI_CHAT] Generated RAG response")
         
-        for keyword in policy_keywords:
-            if keyword.lower() in user_input_lower:
-                policy_question = True
-                matched_keyword = keyword
-                logging.info(f"[UI_CHAT] Policy keyword '{keyword}' detected in request: '{user_input}'")
+        elif selected_source == "web_search":
+            # Use web search tool
+            web_state = use_web_search_tool(state)
+            if not web_state.get("tool_failed", True):
+                response = web_state.get("response")
+                source_type = "web"
+                logging.info(f"[UI_CHAT] Generated web search response")
+        
+        # Use direct LLM if other sources failed or for general knowledge
+        if not response:
+            direct_state = use_direct_llm_tool(state)
+            if not direct_state.get("tool_failed", True):
+                response = direct_state.get("response")
+                source_type = "direct_llm"
+                logging.info(f"[UI_CHAT] Generated direct LLM response")
+        
+        # Final fallback
+        if not response:
+            response = "I'm sorry, I couldn't generate an appropriate response. Please try asking in a different way."
+            source_type = "error"
+            logging.warning(f"[UI_CHAT] All response methods failed")
+        
+        # Return the response with source information
+        return jsonify({
+            'success': True,
+            'message': response,
+            'source': source_type
+        })
+        
+    except Exception as e:
+        logging.error(f"[UI_CHAT] Error in UI chat processing: {e}", exc_info=True)
+        
+        # CRITICAL CHECK: If the query is specifically about FEP or Funeral Expenses, force using RAG with a retry
+        fep_specific_terms = ["fep", "funeral expenses", "funeral payment", "funeral expenses payment"]
+        is_explicitly_fep = False
+        
+        for term in fep_specific_terms:
+            if term in user_input.lower():
+                is_explicitly_fep = True
+                logging.info(f"[UI_CHAT] Query explicitly about FEP/Funeral Expenses ('{term}'). Forcing RAG with retry.")
                 break
-
-        # Log the policy question detection result
-        if policy_question:
-            logging.info(f"[UI_CHAT] Detected as policy question (keyword: '{matched_keyword}')")
-        else:
-            logging.info(f"[UI_CHAT] Not detected as policy question, but still trying RAG first")
         
-        # Always try RAG first regardless of question type
-        if rag_db is not None:
+        if is_explicitly_fep and not response and rag_db is not None:
+            # If we're here, it means the first RAG attempt failed but we have a FEP-specific question
+            # We'll try again with even more lenient retrieval and explicit FEP terms
             try:
-                logging.info("[UI_CHAT] Trying RAG first")
-                rag_response, source_docs = create_rag_response(user_input)
+                # Force FEP context into query
+                enhanced_query = f"{user_input} funeral expenses payment FEP policy eligibility DWP benefit"
+                logging.info(f"[UI_CHAT] Retrying RAG with enhanced query: {enhanced_query}")
                 
-                if rag_response and source_docs:
-                    response = rag_response
-                    source = "rag"
-                    logging.info(f"[UI_CHAT] Successfully generated RAG response with {len(source_docs)} documents")
+                # Get any documents that might be relevant, no filtering
+                relevant_docs = rag_db.similarity_search(enhanced_query, k=15)
+                
+                if relevant_docs:
+                    # Format context using all retrieved docs
+                    context = "\n\n".join([f"Document: {doc.metadata.get('source_doc', 'Unknown')}\n{doc.page_content}" for doc in relevant_docs[:5]])
                     
+                    # Create explicit FEP policy messages
+                    messages = [{
+                        "role": "system", 
+                        "content": f"""You are a specialist advisor for the DWP's Funeral Expenses Payment (FEP) scheme.
+CRITICAL: The user has asked specifically about FEP policy. Use ONLY the following information to answer:
+
+{context}
+
+IMPORTANT INSTRUCTIONS:
+1. Base your answer EXCLUSIVELY on the information provided above.
+2. If you can't find specific details in the provided information, say: "I don't have complete information about that aspect of FEP policy in my documents."
+3. DO NOT use your general knowledge about funeral payments.
+4. Keep responses focused on policy information from the provided documents.
+"""
+                    }, {"role": "user", "content": user_input}]
+                    
+                    # Use a low temperature for factual responses
+                    llm = ChatOpenAI(temperature=0, openai_api_key=openai_key)
+                    forced_rag_response = llm.invoke(messages)
+                    
+                    response = forced_rag_response.content
+                    source = "rag"  # This was a RAG response
+                    logging.info("[UI_CHAT] Successfully generated forced RAG response for explicit FEP question")
+                    
+                    # Return the forced RAG response
                     return jsonify({
                         'success': True,
                         'message': response,
                         'source': source
                     })
-                else:
-                    logging.info("[UI_CHAT] RAG attempted but no relevant documents found, continuing to fallback options...")
             except Exception as e:
-                logging.error(f"[UI_CHAT] Error using RAG: {e}", exc_info=True)
+                logging.error(f"[UI_CHAT] Error generating forced RAG response: {e}", exc_info=True)
+                
+        # Add a fallback for FEP questions when RAG fails completely
+        if is_explicitly_fep and not response:
+            try:
+                # Use a special FEP-focused direct prompt as fallback
+                logging.info("[UI_CHAT] Using FEP-focused fallback prompt due to RAG issues")
+                
+                messages = [{
+                    "role": "system", 
+                    "content": """You are a specialist advisor for the Department for Work and Pensions (DWP) Funeral Expenses Payment (FEP) scheme.
+
+CRITICAL INSTRUCTIONS FOR FEP POLICY QUESTIONS:
+1. You are answering a question specifically about the Funeral Expenses Payment (FEP) scheme.
+2. FEP is a UK government scheme that helps people on qualifying benefits with funeral costs.
+3. Key facts about FEP:
+   - It helps pay for burial or cremation fees, travel to arrange/attend the funeral
+   - It's available to people receiving certain benefits (Universal Credit, Income Support, etc.)
+   - The person must be responsible for the funeral arrangements
+   - Applications must be made within 6 months of the funeral
+   - It doesn't usually cover the full cost of the funeral
+4. Be clear that your response is based on general policy knowledge, not specific DWP documents.
+5. If asked about very specific details, suggest the user contact DWP directly.
+6. Maintain a compassionate tone as you're likely speaking with someone who has been bereaved.
+
+Focus exclusively on FEP policy information. Do not include general funeral advice unrelated to the FEP scheme.
+"""
+                }, {"role": "user", "content": user_input}]
+                
+                # Use a low temperature for factual responses
+                llm = ChatOpenAI(temperature=0, openai_api_key=openai_key)
+                forced_response = llm.invoke(messages)
+                
+                response = forced_response.content
+                source = "fep_policy"  # This was a specialized FEP response
+                logging.info("[UI_CHAT] Generated FEP-focused response without RAG")
+                
+                # Return the FEP-focused response
+                return jsonify({
+                    'success': True,
+                    'message': response,
+                    'source': source
+                })
+            except Exception as fallback_error:
+                logging.error(f"[UI_CHAT] Error generating FEP fallback response: {fallback_error}", exc_info=True)
         
         # For non-policy questions, analyze if it's a general knowledge question
         is_general_knowledge = should_use_direct_response(user_input)
+        
+        # Block direct LLM for anything that mentions FEP or funeral expenses
+        if is_explicitly_fep:
+            logging.info("[UI_CHAT] Blocked direct LLM for explicit FEP question")
+            is_general_knowledge = False
         
         # For general knowledge questions, use direct LLM
         if is_general_knowledge:
