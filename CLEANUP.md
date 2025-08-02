@@ -20,8 +20,10 @@
    - Removed `cloud-apps-monorepo.code-workspace`
    - Kept only `Funeral-Expenses-Payment-temp.code-workspace`
 
-5. **Test Files**
-   - Organized test JSON files into `test_files/` directory
+5. **File Organization**
+   - Moved test JSON files into `test_files/` directory
+   - Moved configuration JSON files into `config/` directory
+   - Moved shell scripts to appropriate locations in `scripts/` directory
 
 ## Changes to Configuration
 
