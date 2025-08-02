@@ -584,23 +584,33 @@ def should_use_direct_response(query):
     Only clearly non-policy related questions should use direct LLM.
     """
     # List of keywords that suggest policy-related questions - ALWAYS use RAG for these
+    # Expanded list with more variations and specificity
     policy_keywords = [
+        # DWP specific terms
         "dwp", "department", "pension", "benefit", "allowance", "payment", 
         "claim", "eligibility", "application", "policy", "funeral", "expense",
         "support", "government", "entitlement", "welfare", "requirements",
         "form", "application", "apply", "bereavement", "fep", "sf200",
+        
+        # Funeral payment specific terms
         "funeral expenses", "funeral expenses payment", "funeral payment",
-        "funeral director", "burial", "cremation", "deceased", "death certificate"
+        "funeral director", "burial", "cremation", "deceased", "death certificate",
+        
+        # Common question patterns about FEP
+        "how do i", "how to", "when can", "who is eligible", "qualifying", 
+        "qualify", "how much", "what documents", "do i need", "what evidence",
+        "how long", "what benefit"
     ]
     
-    # Normalize query
+    # Normalize query - convert to lowercase for case-insensitive comparison
     query_lower = query.lower()
     
     # First check for policy-related keywords - if any match, always use RAG
+    # Be more specific in logging to debug which terms are matching
     for keyword in policy_keywords:
         if keyword in query_lower:
-            logging.info(f"[CHAT] Policy keyword '{keyword}' detected, will use RAG")
-            return False
+            logging.info(f"[CHAT] Policy keyword '{keyword}' detected in '{query_lower}', will use RAG")
+            return False  # Return False to prevent direct LLM and favor RAG
     
     # Special case for clearly non-policy questions like math, science, etc.
     non_policy_patterns = [
@@ -698,9 +708,20 @@ def create_rag_response(query, conversation_history=None):
         # Initialize LLM for response generation
         llm = ChatOpenAI(temperature=0, openai_api_key=openai_key)
         
-        # Perform a similarity search to get relevant documents
+        # Enhance the search query to improve RAG retrieval
+        # For FEP questions, add additional context to improve document retrieval
+        enhanced_query = query
+        
+        # Check if this is a question about FEP policy
+        is_fep_query = any(keyword in query.lower() for keyword in ["funeral", "expenses", "payment", "fep"])
+        
+        if is_fep_query:
+            # Add specific FEP-related terms to enhance the query
+            enhanced_query = f"{query} funeral expenses payment policy dwp eligibility"
+            logging.info(f"[AGENT] Enhanced FEP query: {enhanced_query}")
+        
         # If we have conversation history, include recent questions in the search query
-        search_query = query
+        search_query = enhanced_query
         if conversation_history:
             # Get up to 3 most recent user messages to enhance the context
             recent_queries = []
@@ -710,18 +731,30 @@ def create_rag_response(query, conversation_history=None):
             
             if recent_queries:
                 # Combine the current query with recent queries for better context
-                search_query = f"{query} {' '.join(recent_queries)}"
+                search_query = f"{enhanced_query} {' '.join(recent_queries)}"
                 logging.info(f"[AGENT] Enhanced search query with conversation history: {search_query}")
         
-        relevant_docs = rag_db.similarity_search_with_score(search_query, k=6)
+        # Increase k to retrieve more potential documents
+        relevant_docs = rag_db.similarity_search_with_score(search_query, k=10)
+        
+        # Log the retrieved documents and their scores for debugging
+        logging.info(f"[AGENT] Retrieved {len(relevant_docs)} documents from RAG")
+        for i, (doc, score) in enumerate(relevant_docs):
+            source = doc.metadata.get('source_doc', 'Unknown')
+            logging.info(f"[AGENT] Doc {i+1}: Score={score}, Source={source}, Content={doc.page_content[:100]}...")
         
         # Filter docs by relevance score (lower is better in OpenAI embeddings)
-        # Only use docs with score below threshold (more relevant)
-        threshold = 0.3  # Adjusted threshold to be more lenient for policy questions
+        # Use a more lenient threshold to include more potentially relevant documents
+        threshold = 0.5  # Much more lenient threshold to ensure we get some results
         filtered_docs = [doc for doc, score in relevant_docs if score < threshold]
         
+        if not filtered_docs and relevant_docs:
+            # If no docs passed the threshold but we have results, take the top 3
+            logging.info(f"[AGENT] No docs under threshold {threshold}, using top 3 docs instead")
+            filtered_docs = [doc for doc, _ in relevant_docs[:3]]
+        
         if not filtered_docs:
-            logging.info(f"[AGENT] No sufficiently relevant documents found in RAG database (threshold: {threshold})")
+            logging.info(f"[AGENT] No relevant documents found in RAG database")
             return None, []
         
         # Format the context from the documents
@@ -730,16 +763,21 @@ def create_rag_response(query, conversation_history=None):
         # Format messages for the chat model
         messages = []
         
-        # Add system prompt with context
+        # Add system prompt with context - stronger instructions to use the RAG context
         messages.append({
             "role": "system", 
-            "content": f"""You are a helpful assistant for DWP (Department for Work and Pensions) policy questions.
-Use the following information from policy documents to answer the user's question:
+            "content": f"""You are a helpful assistant for DWP (Department for Work and Pensions) specializing in Funeral Expenses Payment policy.
+Use ONLY the following information from policy documents to answer the user's question:
 
 {context}
 
-Provide concise, accurate answers based only on the information provided above. If the information doesn't contain a clear answer, say so.
-Maintain conversation context and handle follow-up questions appropriately.
+CRITICAL INSTRUCTIONS:
+1. Base your answer EXCLUSIVELY on the information provided above.
+2. If the exact answer isn't in the provided information, say: "I don't have specific information on that in my policy documents."
+3. DO NOT use your general knowledge about funeral payments or DWP policies.
+4. Cite specific parts of the provided information when answering.
+5. Be concise and direct in your answers.
+6. Maintain a compassionate tone as you're likely helping someone who has been bereaved.
 """
         })
         
@@ -802,23 +840,48 @@ def chat():
         response = ""
         source = "direct_llm"  # Default source
         
-        # First, check for policy keywords to prioritize RAG
-        policy_question = False
-        policy_keywords = ["fep", "funeral expenses", "funeral payment", "dwp", "policy", 
-                          "benefit", "eligibility", "payment", "claim", "application",
-                          "funeral", "expense", "death", "bereavement", "support"]
+        # ALWAYS try RAG first for this domain (Funeral Expenses Payment)
+        # We always want to prioritize policy documents over general knowledge
+        logging.info("[CHAT] Always attempting RAG first for domain-specific question")
+        
+        # Extended list of policy keywords for more accurate detection
+        policy_keywords = [
+            # Core FEP terms
+            "fep", "funeral expenses", "funeral payment", "funeral expenses payment",
+            # DWP terms
+            "dwp", "department for work", "pension", "benefits", "policy", 
+            # Application terms
+            "eligibility", "payment", "claim", "application", "qualifying", "qualify",
+            # Funeral terms
+            "funeral", "expense", "death", "bereavement", "burial", "cremation",
+            # Support terms
+            "support", "help", "assistance", "aid", "financial", "fund",
+            # Question patterns
+            "how do i", "how to", "when can", "who is eligible", "what documents"
+        ]
         
         # Check for policy-related keywords in a case-insensitive way
+        policy_question = False
+        matched_keyword = None
+        user_input_lower = user_input.lower()
+        
         for keyword in policy_keywords:
-            if keyword.lower() in user_input.lower():
+            if keyword.lower() in user_input_lower:
                 policy_question = True
-                logging.info(f"[CHAT] Policy keyword '{keyword}' detected in request, will prioritize RAG")
+                matched_keyword = keyword
+                logging.info(f"[CHAT] Policy keyword '{keyword}' detected in request: '{user_input}'")
                 break
 
-        # For policy questions, try RAG first
-        if policy_question and rag_db is not None:
+        # Log the policy question detection result
+        if policy_question:
+            logging.info(f"[CHAT] Detected as policy question (keyword: '{matched_keyword}')")
+        else:
+            logging.info(f"[CHAT] Not detected as policy question, but still trying RAG first")
+        
+        # Always try RAG first, but with different handling based on question type
+        if rag_db is not None:
             try:
-                logging.info("[CHAT] Detected policy-related question, trying RAG first")
+                logging.info("[CHAT] Trying RAG first")
                 rag_response, source_docs = create_rag_response(user_input, conversation_history)
                 
                 if rag_response and source_docs:
@@ -826,16 +889,16 @@ def chat():
                     source = "rag"
                     logging.info(f"[CHAT] Successfully generated RAG response with {len(source_docs)} documents")
                     
-                    # Return RAG response for policy questions
+                    # Return RAG response immediately
                     return jsonify({
                         'success': True,
                         'response': response,
                         'source': source
                     })
                 else:
-                    logging.info("[CHAT] RAG attempted for policy question but no relevant documents found, continuing...")
+                    logging.info("[CHAT] RAG attempted but no relevant documents found, continuing to fallback options...")
             except Exception as e:
-                logging.error(f"[CHAT] Error using RAG for policy question: {e}", exc_info=True)
+                logging.error(f"[CHAT] Error using RAG: {e}", exc_info=True)
         
         # For non-policy questions, analyze if it's a general knowledge question
         is_general_knowledge = should_use_direct_response(user_input)
@@ -1103,24 +1166,47 @@ def ui_send_message():
         response = ""
         source = "direct_llm"  # Default source
         
-        # First, check for policy keywords to prioritize RAG
-        policy_question = False
-        policy_keywords = ["fep", "funeral expenses", "funeral payment", "dwp", "policy", 
-                          "benefit", "eligibility", "payment", "claim", "application",
-                          "funeral", "expense", "death", "bereavement", "support"]
+        # ALWAYS try RAG first for this domain (Funeral Expenses Payment)
+        logging.info("[UI_CHAT] Always attempting RAG first for domain-specific question")
+        
+        # Extended list of policy keywords for more accurate detection
+        policy_keywords = [
+            # Core FEP terms
+            "fep", "funeral expenses", "funeral payment", "funeral expenses payment",
+            # DWP terms
+            "dwp", "department for work", "pension", "benefits", "policy", 
+            # Application terms
+            "eligibility", "payment", "claim", "application", "qualifying", "qualify",
+            # Funeral terms
+            "funeral", "expense", "death", "bereavement", "burial", "cremation",
+            # Support terms
+            "support", "help", "assistance", "aid", "financial", "fund",
+            # Question patterns
+            "how do i", "how to", "when can", "who is eligible", "what documents"
+        ]
         
         # Check for policy-related keywords in a case-insensitive way
+        policy_question = False
+        matched_keyword = None
         user_input_lower = user_input.lower()
+        
         for keyword in policy_keywords:
             if keyword.lower() in user_input_lower:
                 policy_question = True
-                logging.info(f"[UI_CHAT] Policy keyword '{keyword}' detected, will prioritize RAG")
+                matched_keyword = keyword
+                logging.info(f"[UI_CHAT] Policy keyword '{keyword}' detected in request: '{user_input}'")
                 break
+
+        # Log the policy question detection result
+        if policy_question:
+            logging.info(f"[UI_CHAT] Detected as policy question (keyword: '{matched_keyword}')")
+        else:
+            logging.info(f"[UI_CHAT] Not detected as policy question, but still trying RAG first")
         
-        # For policy questions, always try RAG first
-        if policy_question and rag_db is not None:
+        # Always try RAG first regardless of question type
+        if rag_db is not None:
             try:
-                logging.info("[UI_CHAT] Using RAG for policy question")
+                logging.info("[UI_CHAT] Trying RAG first")
                 rag_response, source_docs = create_rag_response(user_input)
                 
                 if rag_response and source_docs:
@@ -1134,9 +1220,9 @@ def ui_send_message():
                         'source': source
                     })
                 else:
-                    logging.info("[UI_CHAT] RAG attempted but no relevant documents found")
+                    logging.info("[UI_CHAT] RAG attempted but no relevant documents found, continuing to fallback options...")
             except Exception as e:
-                logging.error(f"[UI_CHAT] Error using RAG for response: {e}", exc_info=True)
+                logging.error(f"[UI_CHAT] Error using RAG: {e}", exc_info=True)
         
         # For non-policy questions, analyze if it's a general knowledge question
         is_general_knowledge = should_use_direct_response(user_input)
