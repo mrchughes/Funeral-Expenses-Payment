@@ -1268,25 +1268,21 @@ const FormPage = () => {
                     const saveResult = await autoSaveToDatabase();
                     console.log('[FORM] Returning to review page after save attempt, result:', saveResult);
                     navigate("/review");
-                } else if (currentStep < 13) {
+                } else {
                     // Try to save but continue even if it fails
                     const saveResult = await autoSaveToDatabase();
-                    console.log('[FORM] Save attempt before next step, result:', saveResult);
+                    console.log('[FORM] Saving and returning to tasks page, result:', saveResult);
                     // Always save the current step to localStorage
-                    const nextStep = currentStep + 1;
-                    saveFormStep(user?.email, nextStep);
-                    setCurrentStep(nextStep);
+                    saveFormStep(user?.email, currentStep);
+                    // Navigate to tasks page instead of the next page
+                    navigate("/tasks");
                 }
             } catch (error) {
                 console.error('[FORM] Error during form navigation:', error);
-                // Log the error but still allow continuing
+                // Log the error but still navigate to tasks page
                 setErrors({ general: "An error occurred while saving, but you can continue." });
-                // If we have an error, still move to the next step
-                if (currentStep < 13) {
-                    const nextStep = currentStep + 1;
-                    saveFormStep(user?.email, nextStep);
-                    setCurrentStep(nextStep);
-                }
+                // Navigate to tasks page
+                navigate("/tasks");
             } finally {
                 setLoading(false);
             }
@@ -1479,7 +1475,7 @@ const FormPage = () => {
                                                     onClick={handleNext}
                                                     disabled={loading}
                                                 >
-                                                    {searchParams.get('returnTo') === 'review' ? 'Save and return to summary' : 'Save and continue'}
+                                                    {searchParams.get('returnTo') === 'review' ? 'Save and return to summary' : 'Save and return to tasks'}
                                                 </button>
                                             )}
 
