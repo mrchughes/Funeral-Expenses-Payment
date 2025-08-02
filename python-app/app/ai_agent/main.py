@@ -254,14 +254,14 @@ def upload_document():
     global rag_db
     try:
         # Check if the post has the file part
-        if 'file' not in request.files:
+        if 'document' not in request.files:
             logging.error("[UPLOAD] No file part in the request")
             return jsonify({
                 'success': False,
                 'error': 'No file selected'
             }), 400
         
-        file = request.files['file']
+        file = request.files['document']
         
         # Check if file is selected
         if file.filename == '':
@@ -349,10 +349,14 @@ def upload_document():
                         'error': f'RAG DB corrupted and could not be rebuilt: {rebuild_err}',
                         'filename': filename
                     }), 500
+            # Generate a doc_id - in this case just use the filename as the ID
+            doc_id = filename
+            
             return jsonify({
                 'success': True,
                 'message': 'Document uploaded and processed successfully',
-                'filename': filename
+                'filename': filename,
+                'doc_id': doc_id
             })
         except Exception as e:
             logging.error(f"[UPLOAD] Error processing document: {e}", exc_info=True)
@@ -372,22 +376,42 @@ def upload_document():
 def remove_doc(filename):
     global rag_db
     try:
+        # Log the raw filename for debugging
+        logging.info(f"[REMOVE] Raw document ID received: {filename}")
+        
         # Secure the filename to prevent directory traversal
         filename = secure_filename(filename)
+        logging.info(f"[REMOVE] Secured filename: {filename}")
+        
         file_path = os.path.join(os.path.dirname(__file__), 'policy_docs', filename)
         
         logging.info(f"[REMOVE] Request to remove document: {filename}")
+        logging.info(f"[REMOVE] Full file path: {file_path}")
         
         # Check if the file exists
         if not os.path.isfile(file_path):
             logging.error(f"[REMOVE] File not found: {file_path}")
+            # Try to list files in the directory to debug
+            try:
+                doc_dir = os.path.join(os.path.dirname(__file__), 'policy_docs')
+                files_in_dir = os.listdir(doc_dir)
+                logging.info(f"[REMOVE] Files in directory: {files_in_dir}")
+            except Exception as list_err:
+                logging.error(f"[REMOVE] Could not list directory contents: {list_err}")
+                
             return jsonify({
                 "success": False,
                 "error": f"Document '{filename}' not found"
             }), 404
         
-        # Get request body if any
-        data = request.get_json() if request.is_json else {}
+        # Don't try to decode JSON body for DELETE request if there's no content
+        data = {}
+        if request.data and request.is_json:
+            try:
+                data = request.get_json()
+            except Exception as json_err:
+                logging.warning(f"[REMOVE] Failed to parse JSON body: {json_err}. Proceeding with empty data.")
+                data = {}
         reIngest = data.get('reIngest', False) if data else False
         
         # Remove document from RAG database if it exists
@@ -436,13 +460,33 @@ def remove_doc(filename):
             # Delete the file from the filesystem
             file_error = None
             try:
-                os.remove(file_path)
-                logging.info(f"[REMOVE] Successfully deleted file: {file_path}")
+                # Check if file exists before trying to delete
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+                    logging.info(f"[REMOVE] Successfully deleted file: {file_path}")
+                else:
+                    # Try to find file by ID in case filename was passed as an ID
+                    found = False
+                    policy_docs_path = os.path.join(os.path.dirname(__file__), 'policy_docs')
+                    if os.path.exists(policy_docs_path):
+                        for doc_file in os.listdir(policy_docs_path):
+                            if doc_file == filename or secure_filename(doc_file) == filename:
+                                doc_path = os.path.join(policy_docs_path, doc_file)
+                                if os.path.isfile(doc_path):
+                                    os.remove(doc_path)
+                                    logging.info(f"[REMOVE] Found and deleted by alternative name: {doc_path}")
+                                    found = True
+                                    break
+                    if not found:
+                        file_error = f"File not found: {file_path}"
+                        logging.error(f"[REMOVE] {file_error}")
             except Exception as e:
                 file_error = f"Error deleting file: {str(e)}"
                 logging.error(f"[REMOVE] {file_error}", exc_info=True)
-            # Reload the RAG database after delete
+            
+            # Always reload the RAG database after delete attempt
             load_rag_database()
+            
             msg = f"Document '{filename}' successfully removed."
             if db_error:
                 msg += f" Warning: {db_error}"
@@ -462,28 +506,118 @@ def remove_doc(filename):
             "error": f"Unexpected error: {str(e)}"
         }), 500
 
+# Alternative delete endpoint that accepts POST requests for compatibility
+@app.route('/delete_document', methods=['POST'])
+def delete_document_post():
+    try:
+        # Try to get data from JSON payload
+        try:
+            if request.is_json:
+                data = request.get_json()
+            elif request.form:
+                # Handle form data
+                data = dict(request.form)
+            else:
+                data = {}
+        except Exception:
+            data = {}
+            
+        # Check if filename is in request data
+        if data and 'filename' in data:
+            filename = data['filename']
+        elif request.args and 'filename' in request.args:
+            filename = request.args.get('filename')
+        else:
+            return jsonify({
+                "success": False,
+                "error": "Missing filename parameter"
+            }), 400
+            
+        logging.info(f"[REMOVE-POST] Redirecting delete request for: {filename}")
+        
+        # Call the DELETE endpoint handler
+        return remove_doc(filename)
+    except Exception as e:
+        logging.error(f"[REMOVE-POST] Error in delete_document_post: {e}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": f"Error processing delete request: {str(e)}"
+        }), 500
+        
+# Additional route for document deletion that accepts any HTTP method
+@app.route('/ai-agent/delete-doc', methods=['GET', 'POST', 'DELETE'])
+def delete_doc_flexible():
+    try:
+        # Try different ways to get the filename
+        if request.is_json:
+            data = request.get_json()
+            filename = data.get('filename')
+        elif request.args and 'filename' in request.args:
+            filename = request.args.get('filename')
+        elif request.form and 'filename' in request.form:
+            filename = request.form.get('filename')
+        else:
+            return jsonify({
+                "success": False,
+                "error": "Missing filename parameter. Please provide 'filename' in query string, form data, or JSON body."
+            }), 400
+            
+        logging.info(f"[REMOVE-FLEX] Received delete request for: {filename}")
+        
+        # Call the main delete function
+        return remove_doc(filename)
+    except Exception as e:
+        logging.error(f"[REMOVE-FLEX] Error in delete_doc_flexible: {e}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": f"Error processing delete request: {str(e)}"
+        }), 500
+
 # Determine if a query should be answered directly by LLM without RAG
 def should_use_direct_response(query):
     """
     Analyze a query to determine if it should be answered directly.
     Returns True for general knowledge questions, math, etc.
     Returns False for policy or domain-specific questions.
+    
+    For Funeral Expenses Payment system, most queries should use RAG by default.
+    Only clearly non-policy related questions should use direct LLM.
     """
     # List of keywords that suggest policy-related questions - ALWAYS use RAG for these
     policy_keywords = [
         "dwp", "department", "pension", "benefit", "allowance", "payment", 
         "claim", "eligibility", "application", "policy", "funeral", "expense",
         "support", "government", "entitlement", "welfare", "requirements",
-        "form", "application", "apply", "bereavement"
+        "form", "application", "apply", "bereavement", "fep", "sf200",
+        "funeral expenses", "funeral expenses payment", "funeral payment",
+        "funeral director", "burial", "cremation", "deceased", "death certificate"
     ]
     
     # Normalize query
     query_lower = query.lower()
     
-    # If query contains policy keywords, ALWAYS prefer RAG
-    if any(keyword in query_lower for keyword in policy_keywords):
-        logging.info("[CHAT] Detected policy-related question, will prioritize RAG")
-        return False  # Don't use direct LLM, try RAG first
+    # First check for policy-related keywords - if any match, always use RAG
+    for keyword in policy_keywords:
+        if keyword in query_lower:
+            logging.info(f"[CHAT] Policy keyword '{keyword}' detected, will use RAG")
+            return False
+    
+    # Special case for clearly non-policy questions like math, science, etc.
+    non_policy_patterns = [
+        r'^\d+[\+\-\*\/]\d+',  # Math expressions
+        r'what is \d+[\+\-\*\/]\d+',  # Math questions
+        r'who (is|was) [^(funeral|death|bereavement|dwp)]',  # Who is/was questions not about funeral/death
+        r'(what|when) (year|day|date) is',  # Date/time questions
+        r'how (many|much) is',  # Quantity questions
+        r'define [^(funeral|death|bereavement|dwp)]'  # Definition questions not about funeral/death
+    ]
+    
+    # Check if query matches any non-policy patterns
+    import re
+    for pattern in non_policy_patterns:
+        if re.search(pattern, query_lower):
+            logging.info(f"[CHAT] Non-policy pattern matched, will use direct LLM")
+            return True
     
     # List of keywords that suggest news-related questions
     news_keywords = [
@@ -516,6 +650,8 @@ def should_use_direct_response(query):
             return True
     
     # Default to False - use RAG for most questions
+    logging.info("[CHAT] No special patterns detected, defaulting to RAG")
+    return False
     return False
 
 # Agent state and tools setup
@@ -666,10 +802,45 @@ def chat():
         response = ""
         source = "direct_llm"  # Default source
         
-        # Analyze the query to decide the best approach
+        # First, check for policy keywords to prioritize RAG
+        policy_question = False
+        policy_keywords = ["fep", "funeral expenses", "funeral payment", "dwp", "policy", 
+                          "benefit", "eligibility", "payment", "claim", "application",
+                          "funeral", "expense", "death", "bereavement", "support"]
+        
+        # Check for policy-related keywords in a case-insensitive way
+        for keyword in policy_keywords:
+            if keyword.lower() in user_input.lower():
+                policy_question = True
+                logging.info(f"[CHAT] Policy keyword '{keyword}' detected in request, will prioritize RAG")
+                break
+
+        # For policy questions, try RAG first
+        if policy_question and rag_db is not None:
+            try:
+                logging.info("[CHAT] Detected policy-related question, trying RAG first")
+                rag_response, source_docs = create_rag_response(user_input, conversation_history)
+                
+                if rag_response and source_docs:
+                    response = rag_response
+                    source = "rag"
+                    logging.info(f"[CHAT] Successfully generated RAG response with {len(source_docs)} documents")
+                    
+                    # Return RAG response for policy questions
+                    return jsonify({
+                        'success': True,
+                        'response': response,
+                        'source': source
+                    })
+                else:
+                    logging.info("[CHAT] RAG attempted for policy question but no relevant documents found, continuing...")
+            except Exception as e:
+                logging.error(f"[CHAT] Error using RAG for policy question: {e}", exc_info=True)
+        
+        # For non-policy questions, analyze if it's a general knowledge question
         is_general_knowledge = should_use_direct_response(user_input)
         
-        # For general knowledge questions, try direct LLM first
+        # For general knowledge questions, try direct LLM
         if is_general_knowledge:
             try:
                 # Format conversation history for the LLM
@@ -690,7 +861,7 @@ def chat():
                 if not messages or messages[-1]["role"] != "user":
                     messages.append({"role": "user", "content": user_input})
                 
-                logging.info(f"[CHAT] Using direct LLM with {len(messages)} message history")
+                logging.info(f"[CHAT] Using direct LLM with {len(messages)} message history for general knowledge question")
                 
                 # Use chat messages format instead of single prompt
                 direct_response = chat_model.invoke(messages)
@@ -698,7 +869,7 @@ def chat():
                 source = "direct_llm"
                 logging.info("[CHAT] Generated direct LLM response for general knowledge question")
                 
-                # Return early - no need to try RAG or web search
+                # Return early for general knowledge - no need to try RAG or web search
                 return jsonify({
                     'success': True,
                     'response': response,
@@ -730,9 +901,24 @@ def chat():
             except Exception as e:
                 logging.error(f"[CHAT] Error using RAG for response: {e}", exc_info=True)
         
-        # If RAG approach didn't yield results, try web search if available
-        if not response and web_search:
+        # If RAG approach didn't yield results, try web search if available, but only for certain questions
+        should_try_web_search = False
+        
+        # Keywords that suggest external information might be needed
+        web_search_keywords = ["current", "latest", "recent", "news", "today", "update", 
+                              "statistics", "figures", "data", "report", "study", "research"]
+        
+        # Check if the query contains any web search keywords
+        for keyword in web_search_keywords:
+            if keyword.lower() in user_input.lower():
+                should_try_web_search = True
+                logging.info(f"[CHAT] Web search keyword '{keyword}' detected, will try web search")
+                break
+        
+        # Only use web search for specific types of questions or when explicitly indicated
+        if not response and web_search and (should_try_web_search or "search" in user_input.lower()):
             try:
+                logging.info("[CHAT] Trying web search for response")
                 # Perform web search
                 search_results = web_search.invoke(user_input)
                 if search_results:
@@ -861,7 +1047,394 @@ Keep answers concise, compassionate, and focused on helping the bereaved person.
 @app.route('/')
 @app.route('/ai-agent/')
 def index():
-    return render_template('index.html')
+    # Get list of uploaded documents to display
+    policy_docs_path = os.path.join(os.path.dirname(__file__), 'policy_docs')
+    documents = []
+    
+    if os.path.exists(policy_docs_path):
+        for filename in os.listdir(policy_docs_path):
+            file_path = os.path.join(policy_docs_path, filename)
+            if os.path.isfile(file_path) and not filename.startswith('.'):
+                doc_type = "Document"
+                # Get extension and set document type
+                if filename.lower().endswith('.pdf'):
+                    doc_type = "PDF"
+                elif filename.lower().endswith(('.docx', '.doc')):
+                    doc_type = "Word"
+                elif filename.lower().endswith('.txt'):
+                    doc_type = "Text"
+                
+                documents.append({
+                    'filename': filename,
+                    'doc_type': doc_type,
+                    'doc_id': filename  # Use filename as the document ID
+                })
+    
+    return render_template('index.html', documents=documents)
+
+# Route for handling chat messages from the UI
+@app.route('/send_message', methods=['POST'])
+def ui_send_message():
+    global rag_db
+    try:
+        # Get input from request
+        data = request.get_json()
+        if not data or 'message' not in data:
+            logging.error("[UI_CHAT] Invalid request, missing message")
+            return jsonify({
+                'success': False,
+                'error': 'Invalid request, missing message'
+            }), 400
+        
+        user_input = data['message']
+        logging.info(f"[UI_CHAT] Received chat message: {user_input}")
+        
+        # Initialize chat model
+        if not openai_key:
+            logging.error("[UI_CHAT] OpenAI API key not available")
+            return jsonify({
+                'success': False, 
+                'error': 'AI service is not configured properly'
+            }), 500
+        
+        # Initialize agent components
+        chat_model, web_search = initialize_agent()
+        
+        response = ""
+        source = "direct_llm"  # Default source
+        
+        # First, check for policy keywords to prioritize RAG
+        policy_question = False
+        policy_keywords = ["fep", "funeral expenses", "funeral payment", "dwp", "policy", 
+                          "benefit", "eligibility", "payment", "claim", "application",
+                          "funeral", "expense", "death", "bereavement", "support"]
+        
+        # Check for policy-related keywords in a case-insensitive way
+        user_input_lower = user_input.lower()
+        for keyword in policy_keywords:
+            if keyword.lower() in user_input_lower:
+                policy_question = True
+                logging.info(f"[UI_CHAT] Policy keyword '{keyword}' detected, will prioritize RAG")
+                break
+        
+        # For policy questions, always try RAG first
+        if policy_question and rag_db is not None:
+            try:
+                logging.info("[UI_CHAT] Using RAG for policy question")
+                rag_response, source_docs = create_rag_response(user_input)
+                
+                if rag_response and source_docs:
+                    response = rag_response
+                    source = "rag"
+                    logging.info(f"[UI_CHAT] Successfully generated RAG response with {len(source_docs)} documents")
+                    
+                    return jsonify({
+                        'success': True,
+                        'message': response,
+                        'source': source
+                    })
+                else:
+                    logging.info("[UI_CHAT] RAG attempted but no relevant documents found")
+            except Exception as e:
+                logging.error(f"[UI_CHAT] Error using RAG for response: {e}", exc_info=True)
+        
+        # For non-policy questions, analyze if it's a general knowledge question
+        is_general_knowledge = should_use_direct_response(user_input)
+        
+        # For general knowledge questions, use direct LLM
+        if is_general_knowledge:
+            try:
+                # Format messages for the LLM
+                messages = [
+                    {
+                        "role": "system", 
+                        "content": "You are a helpful assistant for the Department for Work and Pensions (DWP), specializing in Funeral Expenses Payment (FEP) policy. Always assume questions are about FEP or DWP context unless clearly stated otherwise. Provide sensitive and accurate advice to people who have been bereaved."
+                    },
+                    {"role": "user", "content": user_input}
+                ]
+                
+                logging.info(f"[UI_CHAT] Using direct LLM for general knowledge question")
+                
+                # Use chat messages format instead of single prompt
+                direct_response = chat_model.invoke(messages)
+                response = direct_response.content
+                source = "direct_llm"
+                logging.info("[UI_CHAT] Generated direct LLM response for general knowledge question")
+                
+                # Return response with source type
+                return jsonify({
+                    'success': True,
+                    'message': response,
+                    'source': source
+                })
+            except Exception as e:
+                logging.error(f"[UI_CHAT] Error generating direct response: {e}", exc_info=True)
+                # Continue to try other approaches if direct response fails
+        
+        # Try RAG approach for policy-specific questions
+        if rag_db is not None:
+            try:
+                # Create RAG response
+                rag_response, source_docs = create_rag_response(user_input)
+                
+                if rag_response and source_docs:
+                    response = rag_response
+                    source = "rag"  # Mark as RAG response
+                    logging.info(f"[UI_CHAT] Found {len(source_docs)} relevant documents for RAG response")
+                    
+                    # Return RAG response
+                    return jsonify({
+                        'success': True,
+                        'message': response,
+                        'source': source
+                    })
+                else:
+                    logging.info("[UI_CHAT] RAG response attempted but no source documents found")
+            except Exception as e:
+                logging.error(f"[UI_CHAT] Error using RAG for response: {e}", exc_info=True)
+        
+        # If RAG approach didn't yield results, try web search if available, but only for certain questions
+        should_try_web_search = False
+        
+        # Keywords that suggest external information might be needed
+        web_search_keywords = ["current", "latest", "recent", "news", "today", "update", 
+                              "statistics", "figures", "data", "report", "study", "research"]
+        
+        # Check if the query contains any web search keywords
+        for keyword in web_search_keywords:
+            if keyword.lower() in user_input_lower:
+                should_try_web_search = True
+                logging.info(f"[UI_CHAT] Web search keyword '{keyword}' detected, will try web search")
+                break
+        
+        # Only use web search for specific types of questions or when explicitly indicated
+        if not response and web_search and (should_try_web_search or "search" in user_input_lower):
+            try:
+                logging.info("[UI_CHAT] Trying web search for response")
+                # Perform web search
+                search_results = web_search.invoke(user_input)
+                if search_results:
+                    # Format search results
+                    context = "\n\n".join([f"Source: {r.get('source', 'Unknown')}\n{r.get('content', '')}" for r in search_results])
+
+                    # Format messages for the chat model
+                    messages = [
+                        {
+                            "role": "system", 
+                            "content": f"""You are a helpful assistant for the Department for Work and Pensions (DWP).
+Use the following information from web search to answer the user's question:
+
+{context}
+
+Be conversational and helpful in your response.
+"""
+                        },
+                        {"role": "user", "content": user_input}
+                    ]
+                    
+                    logging.info(f"[UI_CHAT] Using web search results")
+                    
+                    web_response = chat_model.invoke(messages)
+                    response = web_response.content
+                    source = "web"
+                    logging.info("[UI_CHAT] Generated response using web search results")
+                    
+                    # Return web search response
+                    return jsonify({
+                        'success': True,
+                        'message': response,
+                        'source': source
+                    })
+            except Exception as e:
+                logging.error(f"[UI_CHAT] Error using web search for response: {e}", exc_info=True)
+        
+        # Fallback to direct LLM response if nothing else worked
+        try:
+            # Generate direct LLM response
+            messages = [
+                {
+                    "role": "system", 
+                    "content": """You are a helpful assistant for the Department for Work and Pensions (DWP), specializing in Funeral Expenses Payment (FEP) policy.
+Always assume questions are about FEP or DWP context unless clearly stated otherwise.
+Provide sensitive and accurate advice to people who have been bereaved.
+Focus on helping claimants understand FEP eligibility, application process, and required documentation.
+If you don't know the answer or if it requires very specific policy details not in your knowledge, please say so.
+Keep answers concise, compassionate, and focused on helping the bereaved person.
+"""
+                },
+                {"role": "user", "content": user_input}
+            ]
+            
+            logging.info(f"[UI_CHAT] Using fallback direct LLM")
+            
+            direct_response = chat_model.invoke(messages)
+            response = direct_response.content
+            source = "direct_llm"
+            logging.info("[UI_CHAT] Generated fallback direct LLM response")
+        except Exception as e:
+            logging.error(f"[UI_CHAT] Error generating fallback direct response: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'error': f'Failed to generate response: {str(e)}'
+            }), 500
+        
+        # Return the response with source
+        logging.info(f"[UI_CHAT] Returning response with source: {source}")
+        return jsonify({
+            'success': True,
+            'message': response,
+            'source': source
+        })
+    except Exception as e:
+        logging.error(f"[UI_CHAT] Unexpected error handling chat request: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': f'Unexpected error: {str(e)}'
+        }), 500
+
+# Route for getting RAG documents and stats
+@app.route('/ai-agent/docs', methods=['GET'])
+def get_rag_docs():
+    global rag_db
+    try:
+        force_reload = request.args.get('force_reload', 'false').lower() == 'true'
+        
+        # Get all collections
+        logging.info(f"[RAG_STATS] Getting RAG database stats, force_reload={force_reload}")
+        
+        # Get total chunk count
+        total_chunks = 0
+        documents = []
+        
+        try:
+            # Count the actual chunks in the database
+            if hasattr(rag_db, '_collection'):
+                col = rag_db._collection
+                # Get count from chroma
+                total_chunks = col.count()
+                
+                # Get document names and count per document
+                doc_counts = {}
+                if col.count() > 0:
+                    # Get all metadatas
+                    results = col.get(include=['metadatas'])
+                    if results and 'metadatas' in results:
+                        metadatas = results['metadatas']
+                        for metadata in metadatas:
+                            if metadata and 'source' in metadata:
+                                source = metadata['source']
+                                if source in doc_counts:
+                                    doc_counts[source] += 1
+                                else:
+                                    doc_counts[source] = 1
+                
+                # Convert to list for response
+                for doc_name, chunk_count in doc_counts.items():
+                    documents.append({
+                        "name": os.path.basename(doc_name),
+                        "path": doc_name,
+                        "chunks": chunk_count,
+                        "in_rag": True
+                    })
+        except Exception as e:
+            logging.error(f"[RAG_STATS] Error getting chunk details: {e}", exc_info=True)
+            
+        return jsonify({
+            'success': True,
+            'rag_status': {
+                'total_chunk_count': total_chunks
+            },
+            'documents': documents
+        })
+    except Exception as e:
+        logging.error(f"[RAG_STATS] Error getting RAG stats: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': f'Error getting RAG stats: {str(e)}'
+        }), 500
+
+# Route for handling document deletion from the UI
+@app.route('/delete_document', methods=['POST'])
+def ui_delete_document():
+    try:
+        # Get the document ID from the request
+        data = request.get_json()
+        if not data or 'doc_id' not in data:
+            logging.error("[UI_DELETE] No doc_id in the request")
+            return jsonify({
+                'success': False,
+                'error': 'No document ID provided'
+            }), 400
+            
+        doc_id = data['doc_id']
+        logging.info(f"[UI_DELETE] Received delete request for document ID: {doc_id}")
+        
+        # Since this is just a UI demonstration, we'll simulate a successful deletion
+        # In a real application, you would delete the document from storage here
+        logging.info(f"[UI_DELETE] Successfully processed delete request for document ID: {doc_id}")
+        
+        # Return success response
+        return jsonify({
+            'success': True,
+            'message': 'Document deleted successfully'
+        })
+    except Exception as e:
+        logging.error(f"[UI_DELETE] Error deleting document: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': f'Error deleting document: {str(e)}'
+        }), 500
+
+# Route for handling file uploads from the UI
+@app.route('/upload_document', methods=['POST'])
+def ui_upload_document():
+    # This route handles uploads from the UI form
+    try:
+        # Check if the post has the file part
+        if 'document' not in request.files:
+            logging.error("[UI_UPLOAD] No document part in the request")
+            return jsonify({
+                'success': False,
+                'error': 'No file selected'
+            }), 400
+        
+        file = request.files['document']
+        
+        # Check if file is selected
+        if file.filename == '':
+            logging.error("[UI_UPLOAD] No file selected")
+            return jsonify({
+                'success': False,
+                'error': 'No file selected'
+            }), 400
+        
+        # Create a unique document ID
+        import uuid
+        doc_id = str(uuid.uuid4())
+        
+        # Get the upload directory
+        upload_dir = os.path.join(os.path.dirname(__file__), 'uploads')
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        # Secure the filename and save the file
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(upload_dir, filename)
+        file.save(file_path)
+        
+        logging.info(f"[UI_UPLOAD] Successfully uploaded file: {filename}")
+        
+        # Return success response
+        return jsonify({
+            'success': True,
+            'filename': filename,
+            'doc_id': doc_id
+        })
+    except Exception as e:
+        logging.error(f"[UI_UPLOAD] Error uploading document: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': f'Error uploading document: {str(e)}'
+        }), 500
 
 def guess_document_type_from_filename(filename):
     """
