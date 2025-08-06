@@ -1,0 +1,276 @@
+{
+    "sections": [
+        {
+            "id": "evidence-documentation",
+            "title": "Evidence and documentation",
+            "semantic_context": [
+                "evidence",
+                "documentation",
+                "upload",
+                "documents"
+            ],
+            "fields": [
+                {
+                    "name": "evidence",
+                    "label": "Documents you can provide",
+                    "type": "checkbox",
+                    "semantic_context": [
+                        "document types",
+                        "evidence types"
+                    ]
+                },
+                {
+                    "name": "relationshipToDeceased",
+                    "label": "What is your relationship to the deceased?",
+                    "type": "radio",
+                    "semantic_context": [
+                        "relationship",
+                        "relation",
+                        "connection",
+                        "family"
+                    ],
+                    "options": [
+                        {
+                            "value": "partner",
+                            "label": "Partner"
+                        },
+                        {
+                            "value": "parent",
+                            "label": "Parent"
+                        },
+                        {
+                            "value": "child",
+                            "label": "Child"
+                        },
+                        {
+                            "value": "sibling",
+                            "label": "Sibling"
+                        },
+                        {
+                            "value": "other",
+                            "label": "Other"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "about-deceased",
+            "title": "About the person who died",
+            "semantic_context": [
+                "deceased",
+                "dead person",
+                "death",
+                "person who died"
+            ],
+            "fields": [
+                {
+                    "name": "deceasedTitle",
+                    "label": "Title",
+                    "type": "select",
+                    "semantic_context": [
+                        "title",
+                        "prefix",
+                        "honorific",
+                        "mr",
+                        "mrs",
+                        "ms",
+                        "miss",
+                        "dr"
+                    ]
+                },
+                {
+                    "name": "deceasedFirstName",
+                    "label": "First name",
+                    "type": "text",
+                    "semantic_context": [
+                        "deceased first name",
+                        "dead person's first name",
+                        "given name",
+                        "forename"
+                    ]
+                },
+                {
+                    "name": "deceasedMiddleNames",
+                    "label": "Middle names",
+                    "type": "text",
+                    "semantic_context": [
+                        "deceased middle name",
+                        "dead person's middle name"
+                    ]
+                },
+                {
+                    "name": "deceasedLastName",
+                    "label": "Last name",
+                    "type": "text",
+                    "semantic_context": [
+                        "deceased last name",
+                        "dead person's surname",
+                        "family name"
+                    ]
+                },
+                {
+                    "name": "deceasedDateOfBirth",
+                    "label": "Date of birth",
+                    "type": "date",
+                    "semantic_context": [
+                        "deceased birth date",
+                        "dead person's birthday",
+                        "dob",
+                        "born on",
+                        "birth date"
+                    ]
+                },
+                {
+                    "name": "deceasedDateOfDeath",
+                    "label": "Date of death",
+                    "type": "date",
+                    "semantic_context": [
+                        "deceased death date",
+                        "date of passing",
+                        "died on",
+                        "dod",
+                        "death date"
+                    ]
+                },
+                {
+                    "name": "relationshipToDeceased",
+                    "label": "Relationship to deceased",
+                    "type": "radio",
+                    "semantic_context": [
+                        "relationship",
+                        "relation",
+                        "connection",
+                        "family"
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "funeral-details",
+            "title": "Funeral details",
+            "semantic_context": [
+                "funeral",
+                "service",
+                "ceremony",
+                "burial",
+                "cremation"
+            ],
+            "fields": [
+                {
+                    "name": "funeralDirector",
+                    "label": "Funeral director",
+                    "type": "text",
+                    "semantic_context": [
+                        "funeral company",
+                        "funeral home",
+                        "undertaker",
+                        "funeral services",
+                        "funeral provider"
+                    ]
+                },
+                {
+                    "name": "funeralCost",
+                    "label": "Funeral cost",
+                    "type": "number",
+                    "semantic_context": [
+                        "cost",
+                        "price",
+                        "expense",
+                        "bill",
+                        "invoice amount",
+                        "total cost",
+                        "fee",
+                        "charge"
+                    ]
+                },
+                {
+                    "name": "funeralDate",
+                    "label": "Funeral date",
+                    "type": "date",
+                    "semantic_context": [
+                        "service date",
+                        "ceremony date",
+                        "when funeral occurred",
+                        "funeral day"
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "benefits-information",
+            "title": "Benefits information",
+            "semantic_context": [
+                "benefits",
+                "welfare",
+                "entitlement",
+                "payment",
+                "support"
+            ],
+            "fields": [
+                {
+                    "name": "benefitType",
+                    "label": "Benefit type",
+                    "type": "select",
+                    "semantic_context": [
+                        "benefit name",
+                        "support type",
+                        "payment type",
+                        "welfare type"
+                    ]
+                },
+                {
+                    "name": "benefitReference",
+                    "label": "Benefit reference",
+                    "type": "text",
+                    "semantic_context": [
+                        "reference number",
+                        "ref",
+                        "case number",
+                        "claim number"
+                    ]
+                }
+            ]
+        }
+    ],
+    "documentTypeMappings": {
+        "death_certificate": {
+            "relatedSections": [
+                "about-deceased"
+            ],
+            "primaryFields": [
+                "deceasedFirstName",
+                "deceasedLastName",
+                "deceasedDateOfBirth",
+                "deceasedDateOfDeath"
+            ]
+        },
+        "funeral_invoice": {
+            "relatedSections": [
+                "funeral-details"
+            ],
+            "primaryFields": [
+                "funeralDirector",
+                "funeralCost",
+                "funeralDate"
+            ]
+        },
+        "benefit_letter": {
+            "relatedSections": [
+                "benefits-information"
+            ],
+            "primaryFields": [
+                "benefitType",
+                "benefitReference"
+            ]
+        },
+        "relationship_document": {
+            "relatedSections": [
+                "about-deceased"
+            ],
+            "primaryFields": [
+                "relationshipToDeceased"
+            ]
+        }
+    }
+}

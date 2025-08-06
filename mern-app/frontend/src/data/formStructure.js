@@ -16,6 +16,20 @@ export const formSections = [
           'Proof of responsibility for funeral'
         ],
         required: true
+      },
+      {
+        name: 'relationshipToDeceased',
+        label: 'What is your relationship to the deceased?',
+        type: 'radio',
+        options: [
+          'Spouse or civil partner',
+          'Child',
+          'Parent',
+          'Sibling',
+          'Other family member',
+          'Friend'
+        ],
+        required: true
       }
     ]
   },
@@ -23,8 +37,7 @@ export const formSections = [
     id: 'personal-details',
     title: 'Your personal details',
     fields: [
-      { name: 'firstName', label: 'First name', type: 'text', required: true },
-      { name: 'lastName', label: 'Last name', type: 'text', required: true },
+      // Name fields removed as they are populated from user registration
       { name: 'dateOfBirth', label: 'Date of birth', type: 'date', required: true },
       { name: 'nationalInsuranceNumber', label: 'National Insurance number', type: 'text', required: true }
     ]

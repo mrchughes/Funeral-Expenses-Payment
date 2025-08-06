@@ -1,0 +1,15 @@
+{
+    "name": "document-processing-monitoring",
+    "version": "1.0.0",
+    "description": "Monitoring dependencies for Funeral Expenses Payment document processing services",
+    "main": "index.js",
+    "scripts": {
+        "start-monitoring": "./scripts/start-monitoring.sh",
+        "stop-monitoring": "docker-compose -f docker-compose.monitoring.yml down"
+    },
+    "dependencies": {
+        "winston": "^3.10.0",
+        "prom-client": "^14.2.0",
+        "express-winston": "^4.2.0"
+    }
+}

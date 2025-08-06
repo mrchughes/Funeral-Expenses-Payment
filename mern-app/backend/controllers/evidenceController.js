@@ -5,6 +5,7 @@ const fs = require("fs");
 const mongoose = require("mongoose");
 const ApplicationForm = require("../models/ApplicationForm");
 const { v4: uuidv4 } = require('uuid');
+const { uploadToDocProcessingService, docProcessingClient } = require('../services/docProcessingIntegration');
 
 // Directory to store uploads (ensure this exists or create it)
 const UPLOAD_DIR = path.join(__dirname, "../uploads/evidence");
@@ -147,20 +148,6 @@ const uploadEvidence = asyncHandler(async (req, res) => {
         await file.mv(savePath);
         console.log(`[EVIDENCE] File saved successfully: ${savePath}`);
 
-        // Also save a copy to shared evidence directory for AI processing
-        const sharedDir = path.join(__dirname, "../../../shared-evidence");
-        if (!fs.existsSync(sharedDir)) {
-            fs.mkdirSync(sharedDir, { recursive: true });
-        }
-
-        // Create a unique filename for shared directory to avoid conflicts
-        const uniqueFilename = `${userIdStr}_${file.name}`;
-        const sharedPath = path.join(sharedDir, uniqueFilename);
-
-        // Copy file to shared directory
-        fs.copyFileSync(savePath, sharedPath);
-        console.log(`[EVIDENCE] File copied to shared directory: ${sharedPath}`);
-
         // Create evidence entry in application
         const evidenceEntry = {
             evidenceId: `ev-${uuidv4()}`,
@@ -176,6 +163,32 @@ const uploadEvidence = asyncHandler(async (req, res) => {
         await targetApplication.save();
 
         console.log(`[EVIDENCE] Evidence entry added to application: ${evidenceEntry.evidenceId}`);
+
+        // Send to document processing service
+        try {
+            console.log(`[EVIDENCE] Sending to document processing service: ${savePath}`);
+            const processResult = await uploadToDocProcessingService(
+                { path: savePath, originalname: file.name },
+                userIdStr,
+                targetApplication.applicationId,
+                evidenceEntry.evidenceId
+            );
+
+            console.log(`[EVIDENCE] Document processing service result:`, processResult);
+
+            // Add document processing ID to the evidence entry
+            if (processResult && processResult.documentId) {
+                const evidenceIdx = targetApplication.evidence.findIndex(e => e.evidenceId === evidenceEntry.evidenceId);
+                if (evidenceIdx !== -1) {
+                    targetApplication.evidence[evidenceIdx].documentProcessingId = processResult.documentId;
+                    await targetApplication.save();
+                    console.log(`[EVIDENCE] Added document processing ID ${processResult.documentId} to evidence ${evidenceEntry.evidenceId}`);
+                }
+            }
+        } catch (processError) {
+            // Log error but don't fail the upload - we'll just use the old processing flow as fallback
+            console.error(`[EVIDENCE] Error sending to document processing service: ${processError.message}`);
+        }
 
         res.json({
             evidenceId: evidenceEntry.evidenceId,
@@ -351,8 +364,70 @@ const getEvidenceDetails = asyncHandler(async (req, res) => {
             documentType: evidenceItem.documentType || 'Unknown',
             extractedText: evidenceItem.extractedText || '',
             matchedFields: evidenceItem.matchedFields || [],
-            applicationId: application.applicationId
+            applicationId: application.applicationId,
+            processingStatus: evidenceItem.processingStatus || 'unknown',
+            processingProgress: evidenceItem.processingProgress || 0,
+            extractionSummary: evidenceItem.extractionSummary || null
         };
+
+        // Check if we have a document processing ID and get the latest status
+        if (evidenceItem.documentProcessingId) {
+            try {
+                console.log(`[EVIDENCE] Fetching status from document processing service for ID: ${evidenceItem.documentProcessingId}`);
+                const { getDocumentStatus } = require('../services/docProcessingIntegration');
+                const processingStatus = await getDocumentStatus(evidenceItem.documentProcessingId);
+
+                if (processingStatus) {
+                    // Update the status in the response
+                    evidenceDetails.processingStatus = processingStatus.status;
+                    evidenceDetails.processingProgress = processingStatus.progress || 0;
+
+                    // Also update the database if the status has changed
+                    if (evidenceItem.processingStatus !== processingStatus.status) {
+                        const evidenceIdx = application.evidence.findIndex(e => e.evidenceId === evidenceId);
+                        if (evidenceIdx !== -1) {
+                            application.evidence[evidenceIdx].processingStatus = processingStatus.status;
+                            application.evidence[evidenceIdx].processingProgress = processingStatus.progress || 0;
+                            await application.save();
+                            console.log(`[EVIDENCE] Updated database with processing status: ${processingStatus.status}`);
+                        }
+                    }
+
+                    // If the document processing has fields extracted, get them
+                    if (processingStatus.status === 'completed' || processingStatus.status === 'fields_mapped') {
+                        console.log(`[EVIDENCE] Fetching extracted fields for document: ${evidenceItem.documentProcessingId}`);
+                        const { docProcessingClient } = require('../services/docProcessingIntegration');
+                        const fieldsData = await docProcessingClient.getExtractedFields(evidenceItem.documentProcessingId);
+
+                        if (fieldsData && fieldsData.fields) {
+                            // Update our evidence details with the latest extracted data
+                            evidenceDetails.matchedFields = fieldsData.fields;
+
+                            // Only update the database if we have new fields or different fields
+                            const currentFieldCount = evidenceItem.matchedFields?.length || 0;
+                            if (currentFieldCount !== fieldsData.fields.length) {
+                                const evidenceIdx = application.evidence.findIndex(e => e.evidenceId === evidenceId);
+                                if (evidenceIdx !== -1) {
+                                    application.evidence[evidenceIdx].matchedFields = fieldsData.fields;
+
+                                    // If we got document type info, update that too
+                                    if (fieldsData.documentType) {
+                                        application.evidence[evidenceIdx].documentType = fieldsData.documentType;
+                                        evidenceDetails.documentType = fieldsData.documentType;
+                                    }
+
+                                    await application.save();
+                                    console.log(`[EVIDENCE] Updated database with ${fieldsData.fields.length} extracted fields`);
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error(`[EVIDENCE] Error fetching from document processing service: ${err.message}`);
+                // Don't fail the request, just continue with what we have
+            }
+        }
 
         res.json(evidenceDetails);
     } catch (error) {

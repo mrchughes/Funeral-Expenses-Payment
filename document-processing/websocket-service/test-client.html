@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            max-width: 1000px;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+
+        .panel {
+            flex: 1;
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        .message-log {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-top: 10px;
+            font-family: monospace;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+
+        button {
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+        }
+
+        .status {
+            margin-top: 15px;
+        }
+
+        .connected {
+            color: green;
+        }
+
+        .disconnected {
+            color: red;
+        }
+
+        .message {
+            margin: 5px 0;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+        }
+
+        .message .time {
+            color: #888;
+            font-size: 0.8em;
+        }
+
+        .message .direction {
+            font-weight: bold;
+        }
+
+        .message .content {
+            white-space: pre-wrap;
+        }
+
+        .incoming {
+            color: blue;
+        }
+
+        .outgoing {
+            color: green;
+        }
+
+        .error {
+            color: red;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>WebSocket Test Client</h1>
+
+    <div class="container">
+        <div class="panel">
+            <h2>Connection</h2>
+            <div class="form-group">
+                <label for="wsUrl">WebSocket URL:</label>
+                <input type="text" id="wsUrl" value="ws://localhost:4007" />
+            </div>
+            <div class="form-group">
+                <label for="protocol">Protocol:</label>
+                <select id="protocol">
+                    <option value="raw">Raw WebSocket</option>
+                    <option value="socketio">Socket.IO</option>
+                </select>
+            </div>
+            <button id="connectBtn">Connect</button>
+            <button id="disconnectBtn" disabled>Disconnect</button>
+
+            <div class="status">
+                Status: <span id="connectionStatus" class="disconnected">Disconnected</span>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>Document Subscription</h2>
+            <div class="form-group">
+                <label for="documentId">Document ID:</label>
+                <input type="text" id="documentId" placeholder="Enter document ID" />
+            </div>
+            <button id="subscribeBtn" disabled>Subscribe</button>
+            <button id="unsubscribeBtn" disabled>Unsubscribe</button>
+
+            <div class="status">
+                Subscribed to: <span id="subscriptionStatus">None</span>
+            </div>
+        </div>
+    </div>
+
+    <h2>Message Log</h2>
+    <button id="clearLogBtn">Clear Log</button>
+    <div id="messageLog" class="message-log"></div>
+
+    <script>
+        // DOM elements
+        const wsUrlInput = document.getElementById('wsUrl');
+        const protocolSelect = document.getElementById('protocol');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const documentIdInput = document.getElementById('documentId');
+        const subscribeBtn = document.getElementById('subscribeBtn');
+        const unsubscribeBtn = document.getElementById('unsubscribeBtn');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const subscriptionStatus = document.getElementById('subscriptionStatus');
+        const messageLog = document.getElementById('messageLog');
+        const clearLogBtn = document.getElementById('clearLogBtn');
+
+        // WebSocket connection
+        let socket = null;
+        let activeSubscription = null;
+
+        // Helper to log messages
+        function logMessage(direction, content, isError = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isError ? 'error' : direction}`;
+
+            const time = new Date().toLocaleTimeString();
+            messageDiv.innerHTML = `
+                <div class="time">${time}</div>
+                <div class="direction">${direction === 'incoming' ? '← Received' : '→ Sent'}</div>
+                <div class="content">${typeof content === 'object' ? JSON.stringify(content, null, 2) : content}</div>
+            `;
+
+            messageLog.appendChild(messageDiv);
+            messageLog.scrollTop = messageLog.scrollHeight;
+        }
+
+        // Connect to WebSocket
+        connectBtn.addEventListener('click', () => {
+            const url = wsUrlInput.value;
+            const protocol = protocolSelect.value;
+
+            try {
+                if (protocol === 'raw') {
+                    // Raw WebSocket
+                    socket = new WebSocket(url);
+
+                    socket.onopen = () => {
+                        connectionStatus.textContent = 'Connected';
+                        connectionStatus.className = 'connected';
+                        connectBtn.disabled = true;
+                        disconnectBtn.disabled = false;
+                        subscribeBtn.disabled = false;
+                        logMessage('incoming', 'WebSocket connection established');
+                    };
+
+                    socket.onmessage = (event) => {
+                        try {
+                            const data = JSON.parse(event.data);
+                            logMessage('incoming', data);
+
+                            // Handle subscription confirmation
+                            if (data.type === 'subscribed' && data.documentId) {
+                                subscriptionStatus.textContent = data.documentId;
+                                unsubscribeBtn.disabled = false;
+                                activeSubscription = data.documentId;
+                            }
+                        } catch (error) {
+                            logMessage('incoming', event.data);
+                        }
+                    };
+
+                    socket.onerror = (error) => {
+                        logMessage('incoming', `WebSocket error: ${error.message || 'Unknown error'}`, true);
+                    };
+
+                    socket.onclose = (event) => {
+                        connectionStatus.textContent = 'Disconnected';
+                        connectionStatus.className = 'disconnected';
+                        connectBtn.disabled = false;
+                        disconnectBtn.disabled = true;
+                        subscribeBtn.disabled = true;
+                        unsubscribeBtn.disabled = true;
+                        logMessage('incoming', `WebSocket closed: Code ${event.code} - ${event.reason || 'No reason provided'}`);
+                    };
+                } else {
+                    // Socket.IO implementation could be added here
+                    alert('Socket.IO client not implemented in this test client');
+                }
+            } catch (error) {
+                logMessage('incoming', `Error creating WebSocket: ${error.message}`, true);
+            }
+        });
+
+        // Disconnect
+        disconnectBtn.addEventListener('click', () => {
+            if (socket) {
+                socket.close();
+                socket = null;
+                activeSubscription = null;
+                subscriptionStatus.textContent = 'None';
+            }
+        });
+
+        // Subscribe to document updates
+        subscribeBtn.addEventListener('click', () => {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                const documentId = documentIdInput.value.trim();
+
+                if (!documentId) {
+                    alert('Please enter a document ID');
+                    return;
+                }
+
+                const subscribeMsg = {
+                    type: 'subscribe:document',
+                    documentId: documentId
+                };
+
+                socket.send(JSON.stringify(subscribeMsg));
+                logMessage('outgoing', subscribeMsg);
+            }
+        });
+
+        // Unsubscribe from document updates
+        unsubscribeBtn.addEventListener('click', () => {
+            if (socket && socket.readyState === WebSocket.OPEN && activeSubscription) {
+                const unsubscribeMsg = {
+                    type: 'unsubscribe:document',
+                    documentId: activeSubscription
+                };
+
+                socket.send(JSON.stringify(unsubscribeMsg));
+                logMessage('outgoing', unsubscribeMsg);
+
+                subscriptionStatus.textContent = 'None';
+                unsubscribeBtn.disabled = true;
+                activeSubscription = null;
+            }
+        });
+
+        // Clear log
+        clearLogBtn.addEventListener('click', () => {
+            messageLog.innerHTML = '';
+        });
+    </script>
+</body>
+
+</html>

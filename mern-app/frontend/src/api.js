@@ -1,8 +1,12 @@
 // Fully implemented real code for frontend/src/api.js
 import axios from "axios";
 
-// Use relative URL by default for Cloudflare/prod compatibility
-const API_URL = process.env.REACT_APP_API_URL || "/api";
+// Use runtime config or fallback to relative URL for Cloudflare/prod compatibility
+const API_URL = (window.RUNTIME_CONFIG && window.RUNTIME_CONFIG.REACT_APP_API_URL) ||
+    process.env.REACT_APP_API_URL ||
+    "/api";
+
+console.log("API configured with URL:", API_URL);
 
 // Create axios instance with default config
 const api = axios.create({

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>WebSocket Test</title>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const documentId = 'test123';
+            const socket = new WebSocket('ws://localhost:4007');
+            const logElem = document.getElementById('log');
+
+            function log(msg) {
+                const item = document.createElement('div');
+                item.textContent = `${new Date().toISOString()}: ${msg}`;
+                logElem.appendChild(item);
+                console.log(msg);
+            }
+
+            socket.onopen = function () {
+                log('WebSocket connected');
+                // Subscribe to document
+                const subscribeMsg = JSON.stringify({
+                    type: 'subscribe:document',
+                    documentId: documentId
+                });
+                log(`Sending: ${subscribeMsg}`);
+                socket.send(subscribeMsg);
+            };
+
+            socket.onmessage = function (event) {
+                log(`Received: ${event.data}`);
+                try {
+                    const data = JSON.parse(event.data);
+                    log(`Parsed data: ${JSON.stringify(data, null, 2)}`);
+                } catch (e) {
+                    log(`Error parsing message: ${e.message}`);
+                }
+            };
+
+            socket.onerror = function (error) {
+                log(`WebSocket error: ${error.message}`);
+            };
+
+            socket.onclose = function (event) {
+                log(`WebSocket closed. Code: ${event.code}, Reason: ${event.reason || 'No reason provided'}`);
+            };
+
+            document.getElementById('sendButton').addEventListener('click', function () {
+                fetch('http://localhost:4007/broadcast', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        type: 'state_changed',
+                        documentId: documentId,
+                        data: {
+                            status: 'processing',
+                            progress: Math.floor(Math.random() * 100)
+                        }
+                    })
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        log(`Broadcast response: ${JSON.stringify(data)}`);
+                    })
+                    .catch(error => {
+                        log(`Error broadcasting: ${error.message}`);
+                    });
+            });
+        });
+    </script>
+</head>
+
+<body>
+    <h1>WebSocket Test</h1>
+    <button id="sendButton">Send Test Message</button>
+    <h2>Log:</h2>
+    <div id="log" style="border: 1px solid black; padding: 10px; height: 400px; overflow-y: auto;"></div>
+</body>
+
+</html>

@@ -8,6 +8,10 @@ from pypdf import PdfReader
 import docx2txt
 import re
 import logging
+import gc  # Garbage collector for memory management
+import concurrent.futures  # For parallel processing
+import threading
+from functools import partial
 
 # OCR Configuration
 OCR_CONFIG = {
@@ -101,6 +105,15 @@ def preprocess_image(image, image_path=None):
             ratio = max(1200/image.width, 1200/image.height)
             new_size = (int(image.width * ratio), int(image.height * ratio))
             image = image.resize(new_size, Image.LANCZOS)
+            logging.info(f"[OCR] Resized small image to {new_size[0]}x{new_size[1]} for better OCR")
+        
+        # Handle large images - downsample if over 4000 pixels in any dimension to prevent memory issues
+        elif image.width > 4000 or image.height > 4000:
+            scale_factor = min(4000 / image.width, 4000 / image.height)
+            new_width = int(image.width * scale_factor)
+            new_height = int(image.height * scale_factor)
+            logging.info(f"[OCR] Downsampling large image from {image.width}x{image.height} to {new_width}x{new_height} to prevent memory issues")
+            image = image.resize((new_width, new_height), Image.LANCZOS)
         
         # Apply additional noise reduction
         image = image.filter(ImageFilter.MedianFilter(size=3))
@@ -111,20 +124,40 @@ def preprocess_image(image, image_path=None):
         logging.error(f"[OCR] Error in image preprocessing: {str(e)}", exc_info=True)
         return image  # Return original image if preprocessing fails
 
+def process_image_segment(segment, segment_idx, ocr_config, cleanup=True):
+    """
+    Process a single image segment using OCR
+    This function is designed to run in parallel
+    """
+    try:
+        # Apply OCR with custom configuration
+        text = pytesseract.image_to_string(segment, lang=ocr_config['lang'], config=custom_config)
+        
+        # Clean up memory if requested
+        if cleanup:
+            del segment
+            # Force garbage collection
+            gc.collect()
+            
+        return segment_idx, text
+    except Exception as e:
+        logging.error(f"[OCR] Error processing image segment {segment_idx}: {e}", exc_info=True)
+        return segment_idx, ""
+
 def extract_text_from_image(image_path):
     """
     Extract text from an image file using OCR
+    For large images, splits into segments and processes in parallel
     """
     try:
+        # Start with garbage collection to free memory
+        gc.collect()
+        
         logging.info(f"[OCR] Processing image file: {image_path}")
         image = Image.open(image_path)
         
         # Get image details for logging
         logging.info(f"[OCR] Image size: {image.size}, mode: {image.mode}, format: {image.format}")
-        
-        # For PNG files, try multiple preprocessing approaches
-        all_texts = []
-        best_text = ""
         
         # Get the file extension
         _, ext = os.path.splitext(image_path)
@@ -133,6 +166,50 @@ def extract_text_from_image(image_path):
         # Preprocess the image for better OCR results
         processed_image = preprocess_image(image, image_path)
         
+        # For large images, split into segments and process in parallel
+        if processed_image.width > 2000 or processed_image.height > 2000:
+            logging.info(f"[OCR] Large image detected ({processed_image.width}x{processed_image.height}). Processing in segments.")
+            
+            # Determine number of segments (2x2 grid for large images)
+            segments = []
+            segment_width = processed_image.width // 2
+            segment_height = processed_image.height // 2
+            
+            # Create segments
+            for y in range(0, processed_image.height, segment_height):
+                for x in range(0, processed_image.width, segment_width):
+                    # Define segment boundaries
+                    right = min(x + segment_width, processed_image.width)
+                    bottom = min(y + segment_height, processed_image.height)
+                    
+                    # Crop segment
+                    segment = processed_image.crop((x, y, right, bottom))
+                    segments.append(segment)
+            
+            # Process segments in parallel
+            max_workers = min(os.cpu_count() or 2, 4)  # Limit to 4 threads max
+            results = {}
+            
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(process_image_segment, segment, i, OCR_CONFIG): i 
+                          for i, segment in enumerate(segments)}
+                
+                for future in concurrent.futures.as_completed(futures):
+                    segment_idx, text = future.result()
+                    results[segment_idx] = text
+            
+            # Combine results
+            all_texts = [text for _, text in sorted(results.items())]
+            combined_text = "\n".join(all_texts)
+            
+            # Clean up
+            del processed_image
+            del segments
+            gc.collect()
+            
+            return combined_text
+        
+        # For regular-sized images, process directly
         # Try multiple OCR configurations for better results
         configs = [
             custom_config,
@@ -234,29 +311,79 @@ def extract_text_from_image(image_path):
         logging.error(f"[OCR] Error extracting text from image: {e}", exc_info=True)
         return ""
 
+def process_pdf_page(page_idx, page, use_ocr=False, pdf_path=None, images=None):
+    """
+    Process a single PDF page - either extract text directly or use OCR
+    This function is designed to be run in parallel
+    """
+    try:
+        if not use_ocr:
+            # Extract text directly from PDF page
+            page_text = page.extract_text()
+            if page_text and len(page_text.strip()) > 50:
+                return page_idx, page_text
+            return page_idx, ""
+        else:
+            # Use OCR on the page image
+            if images and page_idx < len(images):
+                image = images[page_idx]
+                # Preprocess the image
+                processed_image = preprocess_image(image)
+                # Apply OCR with custom configuration
+                page_text = pytesseract.image_to_string(processed_image, lang=OCR_CONFIG['lang'], config=custom_config)
+                # Free memory
+                del processed_image
+                gc.collect()
+                return page_idx, page_text
+            return page_idx, ""
+    except Exception as e:
+        logging.error(f"[OCR] Error processing PDF page {page_idx}: {e}", exc_info=True)
+        return page_idx, f"[Error on page {page_idx}]"
+
 def extract_text_from_pdf(pdf_path):
     """
     Extract text from a PDF file using OCR if needed
+    Using parallel processing for better performance
     """
     try:
-        extracted_text = ""
         # First try to extract text directly (if PDF has text layer)
         pdf_reader = PdfReader(pdf_path)
-        for page in pdf_reader.pages:
-            page_text = page.extract_text()
-            if page_text and len(page_text.strip()) > 50: # If substantial text is found
-                extracted_text += page_text + "\n\n"
-        # If sufficient text was extracted directly, return it
-        if len(extracted_text.strip()) > 100: # Threshold can be adjusted
-            return extracted_text
-        # Otherwise, use OCR on the PDF
+        max_workers = min(os.cpu_count() or 2, 4)  # Limit to 4 threads max
+        
+        # Start with direct text extraction from PDF
+        text_results = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(process_pdf_page, i, page, False): i 
+                      for i, page in enumerate(pdf_reader.pages)}
+            
+            for future in concurrent.futures.as_completed(futures):
+                page_idx, text = future.result()
+                text_results[page_idx] = text
+
+        # Check if we got enough text directly
+        direct_text = "\n\n".join([text for _, text in sorted(text_results.items())])
+        if len(direct_text.strip()) > 100:  # Threshold can be adjusted
+            return direct_text
+            
+        # If not enough text, use OCR in parallel
         images = pdf_image_conversion(pdf_path)
-        for image in images:
-            # Preprocess the image
-            processed_image = preprocess_image(image)
-            # Apply OCR with custom configuration
-            page_text = pytesseract.image_to_string(processed_image, lang=OCR_CONFIG['lang'], config=custom_config)
-            extracted_text += page_text + "\n\n"
+        logging.info(f"[OCR] Using parallel OCR with {max_workers} workers for {len(images)} PDF pages")
+        
+        ocr_results = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(process_pdf_page, i, None, True, pdf_path, images): i 
+                      for i in range(len(images))}
+            
+            for future in concurrent.futures.as_completed(futures):
+                page_idx, text = future.result()
+                ocr_results[page_idx] = text
+        
+        # Combine results in page order
+        extracted_text = "\n\n".join([text for _, text in sorted(ocr_results.items())])
+        
+        # Force garbage collection to free memory
+        gc.collect()
+        
         return extracted_text
     except Exception as e:
         print(f"Error extracting text from PDF: {e}")
@@ -293,6 +420,17 @@ def process_document(file_path):
     Process a document file based on its extension
     """
     try:
+        # Check file size first to optimize processing
+        try:
+            file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            if file_size_mb > 10:
+                logging.warning(f"[OCR] Large file detected: {file_path} - {file_size_mb:.2f}MB")
+                if file_size_mb > 50:
+                    logging.error(f"[OCR] File too large for processing: {file_path} - {file_size_mb:.2f}MB")
+                    return f"Error: File too large for processing ({file_size_mb:.2f}MB). Maximum recommended size is 50MB."
+        except Exception as e:
+            logging.error(f"[OCR] Error checking file size: {e}")
+        
         _, ext = os.path.splitext(file_path)
         ext = ext.lower()
         logging.info(f"[OCR] Processing file {file_path} with extension {ext}")

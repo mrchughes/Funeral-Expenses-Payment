@@ -78,6 +78,8 @@ function syncEvidenceToAIAgent() {
 // Calls the AI agent to extract form data from evidence files
 async function extractFormData(req, res) {
     try {
+        const extractionStartTime = Date.now();
+        console.log(`[AI EXTRACT] Starting extraction process at ${new Date().toISOString()}`);
         // Sync evidence files to AI agent docs dir
         syncEvidenceToAIAgent();
 
@@ -125,20 +127,71 @@ async function extractFormData(req, res) {
         const aiAgentUrl = process.env.AI_AGENT_URL || "http://localhost:5050";
         console.log(`[AI EXTRACT] AI_AGENT_URL from env: ${process.env.AI_AGENT_URL || 'not set'}`);
         console.log(`[AI EXTRACT] Using AI agent URL: ${aiAgentUrl}`);
-        const endpoint = `${aiAgentUrl}/ai-agent/extract-form-data`;
+
+        // Check for large files that might cause timeouts
+        const AI_AGENT_DOCS = ensureAIAgentDocsDir();
+        let largeFileWarnings = [];
+
+        for (const file of files) {
+            const filePath = path.join(AI_AGENT_DOCS, file);
+            try {
+                if (fs.existsSync(filePath)) {
+                    const stats = fs.statSync(filePath);
+                    const fileSizeInMB = stats.size / (1024 * 1024);
+
+                    if (fileSizeInMB > 10) { // Files larger than 10MB might cause issues
+                        largeFileWarnings.push({
+                            file,
+                            size: fileSizeInMB.toFixed(2) + ' MB',
+                            warning: 'This file is large and may cause timeouts during processing'
+                        });
+                        console.warn(`[AI EXTRACT] Warning: Large file detected: ${file} (${fileSizeInMB.toFixed(2)} MB)`);
+                    }
+                }
+            } catch (err) {
+                console.error(`[AI EXTRACT] Error checking file size for ${file}: ${err.message}`);
+            }
+        }
+
+        // Use the new intelligent mapping endpoint if context data is provided
+        const useIntelligentMapping = req.body && req.body.contextData && Object.keys(req.body.contextData).length > 0;
+        const endpoint = useIntelligentMapping
+            ? `${aiAgentUrl}/api/intelligent-map`  // New intelligent mapping endpoint
+            : `${aiAgentUrl}/ai-agent/extract-form-data`;  // Legacy endpoint
+
         console.log(`[AI EXTRACT] Calling AI agent at ${endpoint}`);
+        console.log(`[AI EXTRACT] Using intelligent mapping: ${useIntelligentMapping}`);        // Get the context data if provided
+        const contextData = req.body && req.body.contextData ? req.body.contextData : {};
         try {
             // Send the list of files to extract data from
             console.log(`[AI EXTRACT] Sending request with files:`, files);
 
-            const aiRes = await axios.post(endpoint, {
-                files: files
-            }, {
+            // Request payload depends on which endpoint we're using
+            const payload = useIntelligentMapping
+                ? {
+                    files: files,
+                    contextData: contextData,
+                    documentType: req.body.documentType || null
+                }
+                : {
+                    files: files
+                };
+
+            console.log(`[AI EXTRACT] Sending payload:`, payload);
+
+            const aiRes = await axios.post(endpoint, payload, {
                 headers: {
                     "Content-Type": "application/json"
                 },
-                timeout: 120000, // 120 second timeout for extraction (increased from 90s)
+                timeout: 120000, // 120 second timeout for intelligent extraction (2 minutes)
                 validateStatus: null // Don't throw errors for non-2xx status codes
+            }).catch(err => {
+                console.error(`[AI EXTRACT] Axios error: ${err.message}`);
+                if (err.code === 'ECONNABORTED') {
+                    console.error(`[AI EXTRACT] Request timed out after ${120000 / 1000} seconds`);
+                    return { status: 408, data: { error: 'Request timed out' } };
+                }
+                return { status: 500, data: { error: err.message } };
             });
 
             console.log(`[AI EXTRACT] AI agent response status: ${aiRes.status}`);
@@ -176,9 +229,20 @@ async function extractFormData(req, res) {
                 }
             }
 
-            // Return the extracted data
+            // Return the extracted data with performance metrics
+            const extractionEndTime = Date.now();
+            const processingTime = (extractionEndTime - extractionStartTime) / 1000; // in seconds
+            console.log(`[AI EXTRACT] Extraction completed in ${processingTime.toFixed(2)} seconds`);
             console.log('[AI EXTRACT] Successfully extracted data from files');
-            res.json({ extracted: extractedData });
+            res.json({
+                extracted: extractedData,
+                performance: {
+                    processingTimeSeconds: processingTime,
+                    fileCount: files.length,
+                    filesProcessed: files,
+                    warnings: largeFileWarnings.length > 0 ? largeFileWarnings : undefined
+                }
+            });
         } catch (err) {
             console.error("[AI EXTRACT] Extraction error:", err.message);
             console.error("[AI EXTRACT] Error details:", err.stack);

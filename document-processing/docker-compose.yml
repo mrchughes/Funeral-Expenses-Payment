@@ -1,0 +1,291 @@
+version: '3.8'
+
+services:
+  # MongoDB database
+  mongodb:
+    image: mongo:latest
+    container_name: doc-processing-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=password
+    networks:
+      - doc-processing-network
+
+  # Redis for queue management and caching
+  redis:
+    image: redis:alpine
+    container_name: doc-processing-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - doc-processing-network
+
+  # MinIO for object storage (S3 compatible)
+  minio:
+    image: minio/minio
+    container_name: doc-processing-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    command: server --console-address ":9001" /data
+    networks:
+      - doc-processing-network
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./api-gateway
+    container_name: doc-processing-api-gateway
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=development
+      - PORT=4000
+      - DOCUMENT_UPLOAD_URL=http://document-upload:4001
+      - ORCHESTRATOR_URL=http://orchestrator:4002
+      - FIELD_MAPPING_URL=http://field-mapping:4005
+      - DB_SERVICE_URL=http://db-service:4007
+      - WEBSOCKET_SERVICE_URL=http://websocket-service:4006
+    depends_on:
+      - document-upload
+      - orchestrator
+      - field-mapping
+      - websocket-service
+    networks:
+      - doc-processing-network
+
+  # Document Upload Service
+  document-upload:
+    build:
+      context: ./document-upload
+    container_name: doc-processing-document-upload
+    ports:
+      - "4001:4001"
+    environment:
+      - NODE_ENV=development
+      - PORT=4001
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET_NAME=documents
+      - DB_SERVICE_URL=http://db-service:4007
+      - ORCHESTRATOR_URL=http://orchestrator:4002
+    depends_on:
+      - minio
+      - db-service
+    networks:
+      - doc-processing-network
+
+  # Document Processing Orchestrator
+  orchestrator:
+    build:
+      context: ./orchestrator
+    container_name: doc-processing-orchestrator
+    ports:
+      - "4002:4002"
+    environment:
+      - NODE_ENV=development
+      - PORT=4002
+      - REDIS_URL=redis://redis:6379
+      - OCR_SERVICE_URL=http://ocr-service:4003
+      - CLASSIFICATION_SERVICE_URL=http://classification-service:4004
+      - EXTRACTION_SERVICE_URL=http://extraction-service:4005
+      - FIELD_MAPPING_URL=http://field-mapping:4005
+      - DB_SERVICE_URL=http://db-service:4007
+      - WEBSOCKET_SERVICE_URL=http://websocket-service:4006
+    depends_on:
+      - redis
+      - ocr-service
+      - classification-service
+      - extraction-service
+      - field-mapping
+      - db-service
+      - websocket-service
+    networks:
+      - doc-processing-network
+
+  # OCR Service
+  ocr-service:
+    build:
+      context: ./ocr-service
+    container_name: doc-processing-ocr-service
+    ports:
+      - "4003:4003"
+    environment:
+      - NODE_ENV=development
+      - PORT=4003
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET_NAME=documents
+      - DB_SERVICE_URL=http://db-service:4007
+      - WEBSOCKET_SERVICE_URL=http://websocket-service:4006
+      - NUM_WORKERS=4
+      - MAX_QUEUE_SIZE=100
+    depends_on:
+      - minio
+      - db-service
+      - websocket-service
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+    networks:
+      - doc-processing-network
+
+  # Classification Service
+  classification-service:
+    build:
+      context: ./classification-service
+    container_name: doc-processing-classification-service
+    ports:
+      - "4004:4004"
+    environment:
+      - NODE_ENV=development
+      - PORT=4004
+      - DB_SERVICE_URL=http://db-service:4007
+      - WEBSOCKET_SERVICE_URL=http://websocket-service:4006
+    depends_on:
+      - db-service
+      - websocket-service
+    networks:
+      - doc-processing-network
+
+  # Extraction Service
+  extraction-service:
+    build:
+      context: ./extraction-service
+    container_name: doc-processing-extraction-service
+    ports:
+      - "4005:4005"
+    environment:
+      - NODE_ENV=development
+      - PORT=4005
+      - DB_SERVICE_URL=http://db-service:4007
+      - WEBSOCKET_SERVICE_URL=http://websocket-service:4006
+    depends_on:
+      - db-service
+      - websocket-service
+    networks:
+      - doc-processing-network
+
+  # Semantic Mapping Service
+  semantic-mapping-service:
+    build:
+      context: ./semantic-mapping-service
+    container_name: doc-processing-semantic-mapping
+    ports:
+      - "4006:4006"
+    environment:
+      - NODE_ENV=development
+      - PORT=4006
+      - DB_SERVICE_URL=http://db-service:4007
+      - WEBSOCKET_SERVICE_URL=http://websocket-service:4006
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - VECTOR_DB_URI=mongodb://admin:password@mongodb:27017/document_processing?authSource=admin
+      - FORM_SCHEMA_PATH=/app/schemas
+    depends_on:
+      - db-service
+      - websocket-service
+      - mongodb
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+    networks:
+      - doc-processing-network
+
+  # WebSocket Service
+  websocket-service:
+    build:
+      context: ./websocket-service
+    container_name: doc-processing-websocket-service
+    ports:
+      - "4007:4007"
+    environment:
+      - NODE_ENV=development
+      - PORT=4007
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    networks:
+      - doc-processing-network
+
+  # Database Service
+  db-service:
+    build:
+      context: ./db-service
+    container_name: doc-processing-db-service
+    ports:
+      - "4008:4008"
+    environment:
+      - NODE_ENV=development
+      - PORT=4008
+      - MONGODB_URI=mongodb://admin:password@mongodb:27017/document_processing?authSource=admin
+    depends_on:
+      - mongodb
+    networks:
+      - doc-processing-network
+
+  # Workflow Service
+  workflow-service:
+    build:
+      context: ./workflow-service
+    container_name: doc-processing-workflow
+    ports:
+      - "4009:4009"
+    environment:
+      - NODE_ENV=development
+      - PORT=4009
+      - REDIS_URL=redis://redis:6379
+      - DB_SERVICE_URL=http://db-service:4008
+      - OCR_SERVICE_URL=http://ocr-service:4003
+      - SEMANTIC_MAPPING_SERVICE_URL=http://semantic-mapping-service:4006
+      - WEBSOCKET_SERVICE_URL=http://websocket-service:4007
+    depends_on:
+      - redis
+      - db-service
+      - ocr-service
+      - semantic-mapping-service
+      - websocket-service
+    networks:
+      - doc-processing-network
+
+  # Frontend Demo
+  frontend-demo:
+    build:
+      context: ./frontend-demo
+    container_name: doc-processing-frontend
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=development
+      - PORT=8080
+      - API_GATEWAY_URL=http://api-gateway:4000
+      - WS_URL=ws://websocket-service:4007
+    depends_on:
+      - api-gateway
+      - websocket-service
+    networks:
+      - doc-processing-network
+
+networks:
+  doc-processing-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+  minio_data:

@@ -1,0 +1,35 @@
+{
+    "name": "document-processing",
+    "version": "1.0.0",
+    "description": "Modular document processing system",
+    "main": "index.js",
+    "scripts": {
+        "test": "jest",
+        "start:dev": "docker-compose up --build",
+        "start:api-gateway": "cd api-gateway && npm start",
+        "start:document-upload": "cd document-upload && npm start",
+        "start:orchestrator": "cd orchestrator && npm start",
+        "start:ocr-service": "cd ocr-service && npm start",
+        "start:classification-service": "cd classification-service && npm start",
+        "start:extraction-service": "cd extraction-service && npm start",
+        "start:field-mapping": "cd field-mapping && npm start",
+        "start:semantic-mapping-service": "cd semantic-mapping-service && npm start",
+        "start:upload-service": "cd upload-service && npm start",
+        "start:workflow-service": "cd workflow-service && npm start",
+        "start:websocket-service": "cd websocket-service && npm start",
+        "start:db-service": "cd db-service && npm start",
+        "start:frontend-demo": "cd frontend-demo && npm start",
+        "test:integration": "cd integration-tests && npm test"
+    },
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+        "dotenv": "^16.3.1",
+        "prom-client": "^15.1.3",
+        "winston": "^3.17.0"
+    },
+    "devDependencies": {
+        "jest": "^29.7.0",
+        "nodemon": "^3.0.1"
+    }
+}

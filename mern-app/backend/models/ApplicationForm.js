@@ -39,6 +39,27 @@ const EvidenceSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    documentProcessingId: {
+        type: String,
+        default: null
+    },
+    processingStatus: {
+        type: String,
+        enum: ['pending', 'processing', 'completed', 'error', 'fields_mapped', 'ocr_complete', null],
+        default: null
+    },
+    processingProgress: {
+        type: Number,
+        default: 0
+    },
+    processingError: {
+        type: String,
+        default: null
+    },
+    extractionSummary: {
+        type: String,
+        default: null
+    },
     matchedFields: [
         {
             formField: String,

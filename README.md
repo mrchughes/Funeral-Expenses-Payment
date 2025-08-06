@@ -17,6 +17,7 @@ This repository contains the Financial Entitlement Platform application, which h
   - **test-results.md**: Results from testing sessions
   - **PDS-Integration-Strategy.md**: Strategy for Personal Data Store integration
   - **extraction-improvements.md**: Documentation of evidence extraction improvements
+  - **websocket-status-updates.md**: Documentation of real-time document status updates
 - **scripts/**: Utility scripts
   - **startup.sh**: Project startup script
   - **test-upload.sh**: Script for testing file uploads

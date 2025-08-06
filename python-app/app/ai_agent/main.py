@@ -2311,6 +2311,9 @@ def extract_form_data():
     """
     Endpoint to extract data from evidence documents for form auto-filling
     """
+    # Start timing the process
+    start_time = time.time()
+    
     # Shared evidence directory - use the volume path inside the container
     docs_dir = "/shared-evidence"
     logging.info(f"[EXTRACT] Scanning evidence directory: {docs_dir}")
@@ -2318,6 +2321,9 @@ def extract_form_data():
     # Print environment variables for debugging (redact API keys)
     env_vars = {k: (v[:5] + '...' if 'KEY' in k and v else v) for k, v in os.environ.items()}
     logging.info(f"[EXTRACT] Environment variables: {env_vars}")
+    
+    # Set max execution time to prevent indefinite hanging
+    MAX_EXECUTION_TIME = 110  # 110 seconds (just under the 120s backend timeout)
     
     # Check if directory exists
     if not os.path.exists(docs_dir):
@@ -2327,6 +2333,12 @@ def extract_form_data():
     # List all files in the directory for debugging
     all_files = os.listdir(docs_dir) if os.path.exists(docs_dir) else []
     logging.info(f"[EXTRACT] All files in evidence directory: {all_files}")
+    
+    # Get any context data from the request for improved extraction
+    context_data = {}
+    if request.json and 'contextData' in request.json:
+        context_data = request.json.get('contextData', {})
+        logging.info(f"[EXTRACT] Received context data: {context_data}")
     
     extracted = {}
     
@@ -2348,7 +2360,11 @@ def extract_form_data():
     
     # Get the list of files from the request, if provided
     requested_files = []
-    if request.json and 'files' in request.json:
+    if request.json and 'fileId' in request.json:
+        # If a specific fileId is provided, process just that file
+        requested_files = [request.json.get('fileId')]
+        logging.info(f"[EXTRACT] Processing specific fileId: {requested_files[0]}")
+    elif request.json and 'files' in request.json:
         requested_files = request.json.get('files', [])
         logging.info(f"[EXTRACT] Processing requested files: {requested_files}")
     
@@ -2494,7 +2510,21 @@ funeralDescription: Funeral description
 funeralContact: Funeral contact
 evidence: Evidence documents (array)
 '''
-            # Use LLM to extract information
+            # Get any context data from the request
+            context_data = {}
+            if request.json and 'contextData' in request.json:
+                context_data = request.json.get('contextData', {})
+                logging.info(f"[EXTRACT] Received context data: {context_data}")
+            
+            # Prepare context information string
+            context_info = ""
+            if context_data:
+                if 'deceasedName' in context_data and context_data['deceasedName']:
+                    context_info += f"\nDECEASED NAME CONTEXT: {context_data['deceasedName']}"
+                if 'applicantName' in context_data and context_data['applicantName']:
+                    context_info += f"\nAPPLICANT NAME CONTEXT: {context_data['applicantName']}"
+            
+            # Use LLM to extract information with context
             prompt = f'''
 You are an expert assistant helping to process evidence for a funeral expenses claim. The following is the application schema:
 {schema}
@@ -2512,6 +2542,9 @@ SUPER IMPORTANT: The OCR text may be VERY limited, noisy, or fragmented, especia
 2. For scanned certificates, look for official terminology like "certificate", "death", "birth", etc.
 3. For scanned invoices, look for amount formats, company names, and service descriptions.
 4. For images, even a few words can indicate document type.
+
+CRITICAL CONTEXT INFORMATION:{context_info}
+Use this context information to help interpret any ambiguous references in the document. For example, if you see a reference to a person and their role isn't clear, check if it matches the deceased or applicant names provided.
 
 CRITICAL: The document filename itself provides important clues about the document type. Analyze it carefully.
 Filename: {fname}
@@ -2565,6 +2598,11 @@ Evidence text:
                     # Apply document-type based field normalization
                     normalized_data = document_classifier.normalize_fields(extracted_data, doc_type)
                     
+                    # Enhance extraction with context data if available
+                    if context_data:
+                        normalized_data = document_classifier.enhance_extraction_with_context(normalized_data, context_data)
+                        logging.info(f"[EXTRACT] Enhanced extraction with context data")
+                    
                     # Apply date normalization to the fields
                     final_data = date_normalizer.process_data_object(normalized_data)                    # Convert back to formatted JSON string
                     extracted[fname] = json.dumps(final_data, indent=4)
@@ -2579,6 +2617,36 @@ Evidence text:
         except Exception as e:
             logging.error(f"[EXTRACT ERROR] {fname}: {e}", exc_info=True)
             extracted[fname] = f"Error extracting: {e}"
+            
+        # Check if we're approaching the timeout limit
+        elapsed_time = time.time() - start_time
+        if elapsed_time > MAX_EXECUTION_TIME:
+            logging.warning(f"[EXTRACT] Approaching timeout after {elapsed_time:.2f} seconds, stopping further processing")
+            remaining_files = [f for f in file_list if f not in extracted]
+            if remaining_files:
+                logging.warning(f"[EXTRACT] {len(remaining_files)} files not processed due to time constraints: {remaining_files}")
+                for f in remaining_files:
+                    extracted[f] = {
+                        "_timeout": {
+                            "value": "Processing timeout",
+                            "reasoning": f"Document processing exceeded the {MAX_EXECUTION_TIME}s time limit"
+                        }
+                    }
+            break
+    
+    # Cleanup to free memory
+    gc.collect()
+    
+    # Add performance metrics
+    end_time = time.time()
+    total_time = end_time - start_time
+    logging.info(f"[EXTRACT] Total processing time: {total_time:.2f} seconds for {len(extracted)} files")
+    
+    extracted['_performance'] = {
+        'processingTimeSeconds': round(total_time, 2),
+        'filesProcessed': len(extracted) - 1,  # Subtract the _performance entry itself
+        'timePerFileSeconds': round(total_time / max(1, len(extracted) - 1), 2)
+    }
     
     return jsonify(extracted)
 

@@ -1,0 +1,1 @@
+{"message":"Invalid email or password","stack":"Error: Invalid email or password\n    at /app/controllers/authController.js:76:15"}

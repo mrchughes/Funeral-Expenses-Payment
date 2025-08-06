@@ -1,9 +1,16 @@
 from flask import Flask
+from .intelligent_mapping import intelligent_mapping_bp
+from .document_extraction import document_extraction_bp
+
 app = Flask(__name__)
+
+# Register blueprints
+app.register_blueprint(intelligent_mapping_bp)
+app.register_blueprint(document_extraction_bp)
 
 @app.route("/")
 def index():
-    return "Hello from Python App! - Validation Fixes Complete"
+    return "Hello from Python App! - Intelligent Mapping System Active"
 
 @app.route("/health")
 def health():

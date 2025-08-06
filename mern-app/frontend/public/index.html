@@ -14,11 +14,20 @@
     <link rel="shortcut icon" href="https://assets.publishing.service.gov.uk/static/favicon.ico" type="image/x-icon" />
     <!-- CSP for Cloudflare and GOV.UK CDN -->
     <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; style-src 'self' 'unsafe-inline' https://frontend.design-system.service.gov.uk https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://frontend.design-system.service.gov.uk; font-src 'self' https://fonts.gstatic.com https://frontend.design-system.service.gov.uk data:; img-src 'self' data: https://assets.publishing.service.gov.uk; connect-src 'self' https:;">
+        content="default-src 'self'; style-src 'self' 'unsafe-inline' https://frontend.design-system.service.gov.uk https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://frontend.design-system.service.gov.uk; font-src 'self' https://fonts.gstatic.com https://frontend.design-system.service.gov.uk data:; img-src 'self' data: https://assets.publishing.service.gov.uk; connect-src 'self' https: http://localhost:* ws://localhost:*;">
 </head>
 
 <body>
     <div id="root"></div>
+
+    <!-- Runtime config for API URLs -->
+    <script>
+        window.RUNTIME_CONFIG = {
+            REACT_APP_API_URL: 'http://localhost:5200/api',
+            REACT_APP_WEBSOCKET_URL: 'ws://localhost:3000/ws/documents'
+        };
+        console.log('API URL set to:', window.RUNTIME_CONFIG.REACT_APP_API_URL);
+    </script>
 
     <!-- GOV.UK Frontend JavaScript -->
     <script src="https://frontend.design-system.service.gov.uk/govuk-frontend-4.7.0.min.js"></script>

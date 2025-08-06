@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Connection Debugger</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .panel {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 20px;
+            background-color: #f9f9f9;
+        }
+
+        .controls {
+            margin-bottom: 15px;
+        }
+
+        .message-log {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            background-color: #fff;
+            font-family: monospace;
+        }
+
+        .log-entry {
+            padding: 5px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .log-entry.send {
+            color: #007bff;
+        }
+
+        .log-entry.receive {
+            color: #28a745;
+        }
+
+        .log-entry.error {
+            color: #dc3545;
+        }
+
+        .log-entry.status {
+            color: #6c757d;
+        }
+
+        button {
+            padding: 8px 16px;
+            margin-right: 10px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        button.disconnect {
+            background-color: #dc3545;
+        }
+
+        button.disconnect:hover {
+            background-color: #c82333;
+        }
+
+        button.send {
+            background-color: #28a745;
+        }
+
+        button.send:hover {
+            background-color: #218838;
+        }
+
+        input,
+        select {
+            padding: 8px;
+            margin-right: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 250px;
+        }
+
+        .form-group {
+            margin-bottom: 10px;
+        }
+
+        .form-group label {
+            display: inline-block;
+            width: 150px;
+            font-weight: bold;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-weight: bold;
+        }
+
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .connecting {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        h2 {
+            color: #343a40;
+            margin-top: 0;
+        }
+
+        .test-actions {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>WebSocket Connection Debugger</h1>
+
+        <div class="panel">
+            <h2>Connection Settings</h2>
+            <div class="form-group">
+                <label for="wsUrl">WebSocket URL:</label>
+                <input type="text" id="wsUrl" value="ws://localhost:4007" />
+            </div>
+            <div class="controls">
+                <button id="connectBtn">Connect</button>
+                <button id="disconnectBtn" class="disconnect" disabled>Disconnect</button>
+                <span id="status" class="status-badge disconnected">Disconnected</span>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>Document Subscription</h2>
+            <div class="form-group">
+                <label for="documentId">Document ID:</label>
+                <input type="text" id="documentId" value="test-doc-123" />
+            </div>
+            <div class="controls">
+                <button id="subscribeBtn" disabled class="send">Subscribe</button>
+                <button id="unsubscribeBtn" disabled>Unsubscribe</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>Send Custom Message</h2>
+            <div class="form-group">
+                <label for="messageType">Message Type:</label>
+                <select id="messageType">
+                    <option value="processing_started">processing_started</option>
+                    <option value="state_changed">state_changed</option>
+                    <option value="progress_updated">progress_updated</option>
+                    <option value="processing_completed">processing_completed</option>
+                    <option value="error_occurred">error_occurred</option>
+                    <option value="custom">Custom</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="messageData">Message Data (JSON):</label>
+                <input type="text" id="messageData" value='{"status":"processing", "progress": 50}'
+                    style="width: 400px;" />
+            </div>
+            <div class="controls">
+                <button id="sendBtn" disabled class="send">Send Message</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>Message Log</h2>
+            <div class="message-log" id="messageLog"></div>
+            <div class="controls">
+                <button id="clearLogBtn">Clear Log</button>
+            </div>
+        </div>
+
+        <div class="panel test-actions">
+            <h2>Test Sequences</h2>
+            <button id="testSequenceBtn">Run Test Sequence</button>
+            <p>Runs a sequence of subscription and status updates to simulate a document upload and processing flow.</p>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+        let isSubscribed = false;
+        let testDocumentId = null;
+
+        // Elements
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const subscribeBtn = document.getElementById('subscribeBtn');
+        const unsubscribeBtn = document.getElementById('unsubscribeBtn');
+        const sendBtn = document.getElementById('sendBtn');
+        const clearLogBtn = document.getElementById('clearLogBtn');
+        const testSequenceBtn = document.getElementById('testSequenceBtn');
+        const statusEl = document.getElementById('status');
+        const messageLog = document.getElementById('messageLog');
+        const wsUrlInput = document.getElementById('wsUrl');
+        const documentIdInput = document.getElementById('documentId');
+        const messageTypeSelect = document.getElementById('messageType');
+        const messageDataInput = document.getElementById('messageData');
+
+        // Functions
+        function log(message, type) {
+            const entry = document.createElement('div');
+            entry.classList.add('log-entry', type);
+
+            const timestamp = new Date().toISOString().slice(11, 23); // HH:MM:SS.mmm
+            entry.innerHTML = `<strong>${timestamp}</strong> [${type.toUpperCase()}] ${typeof message === 'object' ? JSON.stringify(message, null, 2) : message
+                }`;
+
+            messageLog.appendChild(entry);
+            messageLog.scrollTop = messageLog.scrollHeight;
+        }
+
+        function connect() {
+            try {
+                const url = wsUrlInput.value;
+                log(`Connecting to ${url}...`, 'status');
+
+                statusEl.className = 'status-badge connecting';
+                statusEl.textContent = 'Connecting...';
+
+                socket = new WebSocket(url);
+
+                socket.onopen = () => {
+                    log('WebSocket connected', 'status');
+                    statusEl.className = 'status-badge connected';
+                    statusEl.textContent = 'Connected';
+
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                    subscribeBtn.disabled = false;
+                    sendBtn.disabled = false;
+                };
+
+                socket.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        log(data, 'receive');
+                    } catch (err) {
+                        log(`Received: ${event.data}`, 'receive');
+                    }
+                };
+
+                socket.onerror = (error) => {
+                    log(`WebSocket error: ${error.message || 'Unknown error'}`, 'error');
+                    statusEl.className = 'status-badge disconnected';
+                    statusEl.textContent = 'Error';
+                };
+
+                socket.onclose = (event) => {
+                    log(`WebSocket closed. Code: ${event.code}, Reason: ${event.reason || 'No reason'}`, 'status');
+                    statusEl.className = 'status-badge disconnected';
+                    statusEl.textContent = 'Disconnected';
+
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                    subscribeBtn.disabled = true;
+                    unsubscribeBtn.disabled = true;
+                    sendBtn.disabled = true;
+                    isSubscribed = false;
+                };
+            } catch (err) {
+                log(`Failed to connect: ${err.message}`, 'error');
+                statusEl.className = 'status-badge disconnected';
+                statusEl.textContent = 'Failed to Connect';
+            }
+        }
+
+        function disconnect() {
+            if (socket) {
+                log('Disconnecting...', 'status');
+                socket.close(1000, 'User disconnected');
+            }
+        }
+
+        function subscribe() {
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                log('Cannot subscribe, socket is not open', 'error');
+                return;
+            }
+
+            const documentId = documentIdInput.value;
+            if (!documentId) {
+                log('Please enter a document ID', 'error');
+                return;
+            }
+
+            // Try both subscription formats for compatibility
+            try {
+                // Format 1: type:subscribe:document
+                const subscribeMsg1 = {
+                    type: 'subscribe:document',
+                    documentId: documentId
+                };
+                socket.send(JSON.stringify(subscribeMsg1));
+                log(`Sent subscription request 1: ${JSON.stringify(subscribeMsg1)}`, 'send');
+
+                // Format 2: event:subscribe channel:document:id
+                const subscribeMsg2 = {
+                    event: 'subscribe',
+                    channel: `document:${documentId}`
+                };
+                socket.send(JSON.stringify(subscribeMsg2));
+                log(`Sent subscription request 2: ${JSON.stringify(subscribeMsg2)}`, 'send');
+
+                isSubscribed = true;
+                unsubscribeBtn.disabled = false;
+                testDocumentId = documentId;
+            } catch (err) {
+                log(`Error subscribing: ${err.message}`, 'error');
+            }
+        }
+
+        function unsubscribe() {
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                log('Cannot unsubscribe, socket is not open', 'error');
+                return;
+            }
+
+            const documentId = documentIdInput.value;
+            if (!documentId) {
+                log('Please enter a document ID', 'error');
+                return;
+            }
+
+            try {
+                const unsubscribeMsg = {
+                    type: 'unsubscribe:document',
+                    documentId: documentId
+                };
+                socket.send(JSON.stringify(unsubscribeMsg));
+                log(`Sent unsubscription request: ${JSON.stringify(unsubscribeMsg)}`, 'send');
+
+                isSubscribed = false;
+                unsubscribeBtn.disabled = true;
+            } catch (err) {
+                log(`Error unsubscribing: ${err.message}`, 'error');
+            }
+        }
+
+        function sendMessage() {
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                log('Cannot send message, socket is not open', 'error');
+                return;
+            }
+
+            try {
+                const type = messageTypeSelect.value;
+                let data;
+                try {
+                    data = JSON.parse(messageDataInput.value);
+                } catch (err) {
+                    log(`Error parsing JSON: ${err.message}`, 'error');
+                    return;
+                }
+
+                const documentId = documentIdInput.value;
+                if (!documentId) {
+                    log('Please enter a document ID', 'error');
+                    return;
+                }
+
+                const message = {
+                    type: type,
+                    documentId: documentId,
+                    data: data
+                };
+
+                socket.send(JSON.stringify(message));
+                log(`Sent message: ${JSON.stringify(message)}`, 'send');
+            } catch (err) {
+                log(`Error sending message: ${err.message}`, 'error');
+            }
+        }
+
+        function clearLog() {
+            messageLog.innerHTML = '';
+            log('Log cleared', 'status');
+        }
+
+        async function runTestSequence() {
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                log('Cannot run test sequence, socket is not open', 'error');
+                return;
+            }
+
+            const documentId = documentIdInput.value;
+            if (!documentId) {
+                log('Please enter a document ID', 'error');
+                return;
+            }
+
+            try {
+                log('Starting test sequence...', 'status');
+
+                // Step 1: Subscribe to document
+                const subscribeMsg = {
+                    type: 'subscribe:document',
+                    documentId: documentId
+                };
+                socket.send(JSON.stringify(subscribeMsg));
+                log(`Sent subscription request: ${JSON.stringify(subscribeMsg)}`, 'send');
+
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                // Step 2: Processing started
+                const startedMsg = {
+                    type: 'processing_started',
+                    documentId: documentId,
+                    data: { state: 'ocr_processing', progress: 0, step: 'Starting OCR' }
+                };
+                socket.send(JSON.stringify(startedMsg));
+                log(`Sent processing_started: ${JSON.stringify(startedMsg)}`, 'send');
+
+                await new Promise(resolve => setTimeout(resolve, 2000));
+
+                // Step 3: Progress update 1
+                const progressMsg1 = {
+                    type: 'progress_updated',
+                    documentId: documentId,
+                    data: { state: 'ocr_processing', progress: 30, step: 'Extracting Text' }
+                };
+                socket.send(JSON.stringify(progressMsg1));
+                log(`Sent progress update: ${JSON.stringify(progressMsg1)}`, 'send');
+
+                await new Promise(resolve => setTimeout(resolve, 2000));
+
+                // Step 4: Progress update 2
+                const progressMsg2 = {
+                    type: 'progress_updated',
+                    documentId: documentId,
+                    data: { state: 'extracting', progress: 60, step: 'Identifying Fields' }
+                };
+                socket.send(JSON.stringify(progressMsg2));
+                log(`Sent progress update: ${JSON.stringify(progressMsg2)}`, 'send');
+
+                await new Promise(resolve => setTimeout(resolve, 2000));
+
+                // Step 5: Processing completed
+                const completedMsg = {
+                    type: 'processing_completed',
+                    documentId: documentId,
+                    data: { state: 'completed', progress: 100, step: 'Processing Complete' }
+                };
+                socket.send(JSON.stringify(completedMsg));
+                log(`Sent processing_completed: ${JSON.stringify(completedMsg)}`, 'send');
+
+                log('Test sequence completed', 'status');
+            } catch (err) {
+                log(`Error in test sequence: ${err.message}`, 'error');
+            }
+        }
+
+        // Event Listeners
+        connectBtn.addEventListener('click', connect);
+        disconnectBtn.addEventListener('click', disconnect);
+        subscribeBtn.addEventListener('click', subscribe);
+        unsubscribeBtn.addEventListener('click', unsubscribe);
+        sendBtn.addEventListener('click', sendMessage);
+        clearLogBtn.addEventListener('click', clearLog);
+        testSequenceBtn.addEventListener('click', runTestSequence);
+
+        // Initialize
+        log('WebSocket Debugger Initialized', 'status');
+
+        // Auto-generate a test document ID
+        documentIdInput.value = `test-doc-${Math.floor(Math.random() * 1000000)}`;
+    </script>
+</body>
+
+</html>

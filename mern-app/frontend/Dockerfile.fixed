@@ -1,0 +1,14 @@
+FROM node:18-alpine as build
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY .env .env
+COPY . .
+# Create runtime config
+RUN echo 'window.RUNTIME_CONFIG = {   REACT_APP_API_URL: "http://localhost:5200/api",   REACT_APP_WEBSOCKET_URL: "ws://localhost:3000/ws/documents" };' > ./public/runtime-config.js
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=build /app/build /usr/share/nginx/html
+RUN rm -f /etc/nginx/conf.d/default.conf
+COPY ./nginx.conf /etc/nginx/conf.d/default.conf

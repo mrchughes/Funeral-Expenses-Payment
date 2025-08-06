@@ -1,0 +1,21 @@
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Install dependencies
+COPY requirements.adapter.txt /app/
+RUN pip install --no-cache-dir -r requirements.adapter.txt
+
+# Copy application code
+COPY . /app/
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PORT=5050
+
+# Expose the port
+EXPOSE 5050
+
+# Run the application
+CMD ["python", "app/ai_agent_adapter.py"]

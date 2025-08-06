@@ -1,0 +1,42 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'docker'
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        filters:
+          - name: label
+            values: ['com.docker.compose.project=funeral-expenses-payment']
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container'
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: 'service'
+        
+  # Add service-specific scrape configs
+  - job_name: 'ocr-service'
+    static_configs:
+      - targets: ['ocr-service:3000']
+    metrics_path: '/metrics'
+    
+  - job_name: 'semantic-mapping-service'
+    static_configs:
+      - targets: ['semantic-mapping-service:3000']
+    metrics_path: '/metrics'
+    
+  - job_name: 'upload-service'
+    static_configs:
+      - targets: ['upload-service:3000']
+    metrics_path: '/metrics'
+    
+  - job_name: 'mern-app'
+    static_configs:
+      - targets: ['mern-app:3000']
+    metrics_path: '/metrics'

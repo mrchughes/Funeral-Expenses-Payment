@@ -10,6 +10,7 @@ import {
     hasAnyProgress,
     loadSectionProgress
 } from '../utils/formProgress';
+import { loadSectionCompletion } from '../utils/sectionCompletion';
 import { formSections } from '../data/formStructure';
 
 const TaskListPage = () => {
@@ -40,19 +41,32 @@ const TaskListPage = () => {
 
                 setFormData(formData);
 
-                // Load saved section progress instead of recalculating from formData
-                // This preserves completed sections even if formData is incomplete
+                // Load saved section progress and completion checkboxes
                 const savedSectionProgress = loadSectionProgress(user.email);
+                const sectionCompletionStatus = loadSectionCompletion(user.email, {});
                 console.log('📋 TaskListPage: Loaded saved section progress:', savedSectionProgress);
+                console.log('📋 TaskListPage: Loaded section completion status:', sectionCompletionStatus);
 
                 let statuses;
                 if (Object.keys(savedSectionProgress).length > 0) {
-                    statuses = savedSectionProgress;
+                    statuses = { ...savedSectionProgress };
                     console.log('📋 TaskListPage: Using saved section progress');
                 } else {
                     statuses = getAllSectionStatuses(formData, formSections);
                     console.log('📋 TaskListPage: Calculating fresh section statuses');
                 }
+
+                // Override status with checkbox completion status - this takes priority
+                formSections.forEach(section => {
+                    // If section is marked complete with the checkbox, override status
+                    if (sectionCompletionStatus[section.id] === true) {
+                        statuses[section.id] = STATUS.COMPLETED;
+                    }
+                    // If section has any progress but checkbox says not complete, set to in-progress
+                    else if (sectionCompletionStatus[section.id] === false && statuses[section.id] === STATUS.COMPLETED) {
+                        statuses[section.id] = STATUS.IN_PROGRESS;
+                    }
+                });
                 setSectionStatuses(statuses);
                 // Calculate overall progress from section statuses, not just formData
                 const completedSections = Object.values(statuses).filter(status => status === STATUS.COMPLETED).length;
@@ -70,14 +84,28 @@ const TaskListPage = () => {
                 const formData = loadFormData(user.email, {});
                 setFormData(formData);
 
-                // Load saved section progress for fallback too
+                // Load saved section progress and completion checkboxes (fallback)
                 const savedSectionProgress = loadSectionProgress(user.email);
+                const sectionCompletionStatus = loadSectionCompletion(user.email, {});
+
                 let statuses;
                 if (Object.keys(savedSectionProgress).length > 0) {
-                    statuses = savedSectionProgress;
+                    statuses = { ...savedSectionProgress };
                 } else {
                     statuses = getAllSectionStatuses(formData, formSections);
                 }
+
+                // Override status with checkbox completion status - this takes priority
+                formSections.forEach(section => {
+                    // If section is marked complete with the checkbox, override status
+                    if (sectionCompletionStatus[section.id] === true) {
+                        statuses[section.id] = STATUS.COMPLETED;
+                    }
+                    // If section has any progress but checkbox says not complete, set to in-progress
+                    else if (sectionCompletionStatus[section.id] === false && statuses[section.id] === STATUS.COMPLETED) {
+                        statuses[section.id] = STATUS.IN_PROGRESS;
+                    }
+                });
                 setSectionStatuses(statuses);
                 const completedSections = Object.values(statuses).filter(status => status === STATUS.COMPLETED).length;
                 const totalSections = formSections.length;

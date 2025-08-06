@@ -3,7 +3,7 @@ services:
   backend:
     build:
       context: ./mern-app/backend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.fixed
     ports:
       - "5200:5200"
     depends_on:
@@ -22,32 +22,58 @@ services:
       - FRONTEND_URL=https://fep.mrchughes.site
       - JWT_SECRET=secure_jwt_secret_for_authentication_token
       - AI_AGENT_URL=http://ai-agent:5050
+      - AI_AGENT_URL=http://ai-agent:5050
 
   frontend:
+    environment:
+      - REACT_APP_API_URL=http://localhost:5200/api
+      - REACT_APP_WEBSOCKET_URL=ws://localhost:3000/ws/documents
     build:
       context: ./mern-app/frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.fixed
     ports:
       - "3000:80"
     restart: unless-stopped
     networks:
       - app-network
 
-  ai-agent:
+  # Original AI agent - now runs on port 5051 internally
+  ai-agent-original:
     build:
       context: ./python-app/app/ai_agent
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.fixed
     ports:
-      - "5100:5050"
+      - "5101:5050"
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - funny_prompt=you are a helpful assistant specialized in DWP's Funeral Expenses Payment (FEP) policy. Always assume questions are about FEP or DWP context unless clearly stated otherwise. You provide sensitive and accurate advice to people who have been bereaved. Query DWP policy online if unsure of specific details. Keep answers concise, compassionate, and focused on helping claimants understand FEP eligibility and process.
       - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - PORT=5050
     restart: unless-stopped
     networks:
       - app-network
     volumes:
       - ./python-app/app:/app
+      - ./shared-evidence:/shared-evidence
+
+  # Intelligent mapping adapter - provides compatibility layer with enhanced mapping
+  ai-agent:
+    build:
+      context: ./python-app
+      dockerfile: Dockerfile.fixed.adapter
+    ports:
+      - "5100:5050"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - AI_AGENT_ORIGINAL_URL=http://ai-agent-original:5050
+      - PORT=5050
+    restart: unless-stopped
+    networks:
+      - app-network
+    depends_on:
+      - ai-agent-original
+    volumes:
+      - ./python-app:/app
       - ./shared-evidence:/shared-evidence
 
   chroma-db:

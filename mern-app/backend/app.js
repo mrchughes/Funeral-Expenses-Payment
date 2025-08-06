@@ -55,6 +55,7 @@ app.use("/api/evidence", evidenceRoutes);
 app.use("/api/application", applicationRoutes);
 app.use("/api/ai-agent", aiAgentRoutes);
 app.use("/api/test", testRoutes);
+app.use("/api/documents", require("./routes/documentRoutes"));
 // Serve uploaded evidence files statically
 const path = require("path");
 // Fix path to uploads folder - evidence files are now organized by user ID

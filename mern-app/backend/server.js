@@ -3,7 +3,9 @@ require("dotenv").config();
 const app = require("./app");
 const fs = require("fs");
 const path = require("path");
+const http = require("http");
 const connectDB = require("./config/db");
+const documentController = require("./controllers/documentController");
 
 // Connect to MongoDB
 connectDB().then(() => {
@@ -30,7 +32,24 @@ if (!fs.existsSync(sharedEvidenceDir)) {
 // Define the port to run the server on
 const PORT = process.env.PORT || 5000;
 
+// Create HTTP server
+const server = http.createServer(app);
+
+// Initialize WebSocket server for document processing updates
+documentController.initialize(app, server);
+
 // Start the server
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+  console.log(`WebSocket server for document processing updates is active`);
+});
+
+// Handle graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  server.close(() => {
+    console.log('HTTP server closed');
+    documentController.shutdown();
+    process.exit(0);
+  });
 });

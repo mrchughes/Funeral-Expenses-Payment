@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Processing Demo</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .drop-zone {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            transition: all 0.3s;
+            background-color: #f8f9fa;
+        }
+
+        .drop-zone.highlight {
+            border-color: #2196F3;
+            background-color: #e3f2fd;
+        }
+
+        .drop-zone-prompt {
+            margin-bottom: 15px;
+            font-size: 18px;
+            color: #6c757d;
+        }
+
+        .progress-container {
+            margin-top: 20px;
+        }
+
+        .document-card {
+            margin-bottom: 15px;
+            border-left: 4px solid #6c757d;
+        }
+
+        .document-card.processing {
+            border-left-color: #ffc107;
+        }
+
+        .document-card.completed {
+            border-left-color: #28a745;
+        }
+
+        .document-card.failed {
+            border-left-color: #dc3545;
+        }
+
+        .status-badge {
+            font-size: 0.8rem;
+            padding: 0.25rem 0.5rem;
+        }
+
+        .field-mapping {
+            font-size: 0.9rem;
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+
+        .socket-status {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            font-size: 0.8rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container mt-5">
+        <h1 class="mb-4">Document Processing Demo</h1>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Upload Document</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="upload-form">
+                            <div class="mb-3">
+                                <label for="userId" class="form-label">User ID</label>
+                                <input type="text" class="form-control" id="userId" value="test-user-001" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="formId" class="form-label">Form ID</label>
+                                <input type="text" class="form-control" id="formId" value="funeral-expenses-payment"
+                                    required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Document</label>
+                                <div class="drop-zone" id="drop-zone">
+                                    <div class="drop-zone-prompt">Drag & Drop file or click to browse</div>
+                                    <input type="file" id="file-input" class="d-none" accept="image/*,application/pdf">
+                                </div>
+                                <small class="text-muted">Supported formats: PDF, JPEG, PNG</small>
+                            </div>
+                            <button type="submit" class="btn btn-primary" id="upload-button">Upload Document</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">Documents</h5>
+                        <button class="btn btn-sm btn-outline-secondary" id="refresh-button">Refresh</button>
+                    </div>
+                    <div class="card-body">
+                        <div id="documents-container">
+                            <div class="text-center text-muted py-5">
+                                <p>No documents uploaded yet</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="socket-status" id="socket-status">WebSocket: Connecting...</div>
+
+    <!-- Socket.IO Client -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <!-- Bootstrap Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- App Script -->
+    <script>
+        // Configuration
+        const API_BASE_URL = '/api'; // Local proxy to API Gateway
+        const WEBSOCKET_URL = window.location.hostname === 'localhost' ? 'http://localhost:4007' : `ws://${window.location.hostname}:4007`; // WebSocket Service
+
+        // DOM Elements
+        const uploadForm = document.getElementById('upload-form');
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const uploadButton = document.getElementById('upload-button');
+        const documentsContainer = document.getElementById('documents-container');
+        const refreshButton = document.getElementById('refresh-button');
+        const socketStatus = document.getElementById('socket-status');
+
+        // Document cache
+        let documents = [];
+        let socket = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            setupFileUpload();
+            setupFormSubmit();
+            setupWebSocket();
+            loadDocuments();
+
+            refreshButton.addEventListener('click', loadDocuments);
+        });
+
+        // Setup file upload
+        function setupFileUpload() {
+            // Click on drop zone to trigger file input
+            dropZone.addEventListener('click', () => {
+                fileInput.click();
+            });
+
+            // File selected
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files.length) {
+                    updateDropZone(fileInput.files[0]);
+                }
+            });
+
+            // Drag and drop events
+            ['dragover', 'dragenter'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    dropZone.classList.add('highlight');
+                });
+            });
+
+            ['dragleave', 'dragend'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => {
+                    dropZone.classList.remove('highlight');
+                });
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('highlight');
+
+                if (e.dataTransfer.files.length) {
+                    fileInput.files = e.dataTransfer.files;
+                    updateDropZone(e.dataTransfer.files[0]);
+                }
+            });
+        }
+
+        // Update drop zone UI
+        function updateDropZone(file) {
+            const prompt = dropZone.querySelector('.drop-zone-prompt');
+            prompt.textContent = file.name;
+        }
+
+        // Setup form submit
+        function setupFormSubmit() {
+            uploadForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                const userId = document.getElementById('userId').value;
+                const formId = document.getElementById('formId').value;
+
+                if (!fileInput.files.length) {
+                    alert('Please select a file to upload');
+                    return;
+                }
+
+                const file = fileInput.files[0];
+
+                // Create form data
+                const formData = new FormData();
+                formData.append('file', file); // Changed from 'document' to 'file' to match API
+                formData.append('userId', userId);
+                formData.append('formId', formId);
+
+                // Disable form
+                uploadButton.disabled = true;
+                uploadButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Uploading...';
+
+                try {
+                    // Upload document
+                    const response = await fetch(`${API_BASE_URL}/upload`, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        console.log('Document uploaded:', data);
+
+                        // Reset form
+                        fileInput.value = '';
+                        dropZone.querySelector('.drop-zone-prompt').textContent = 'Drag & Drop file or click to browse';
+
+                        // Add document to list
+                        addDocumentToList({
+                            documentId: data.documentId,
+                            originalName: data.originalName,
+                            processingState: {
+                                status: data.status,
+                                progress: 0,
+                                message: 'Document uploaded, processing started',
+                                lastUpdated: new Date().toISOString()
+                            }
+                        });
+
+                        // Show success message
+                        alert('Document uploaded successfully');
+                    } else {
+                        console.error('Upload failed:', data);
+                        alert(`Upload failed: ${data.error}`);
+                    }
+                } catch (error) {
+                    console.error('Upload error:', error);
+                    alert('Upload failed due to an error');
+                } finally {
+                    // Enable form
+                    uploadButton.disabled = false;
+                    uploadButton.textContent = 'Upload Document';
+                }
+            });
+        }
+
+        // Setup WebSocket connection
+        function setupWebSocket() {
+            try {
+                socket = io(WEBSOCKET_URL);
+
+                socket.on('connect', () => {
+                    console.log('WebSocket connected');
+                    socketStatus.textContent = 'WebSocket: Connected';
+                    socketStatus.className = 'socket-status bg-success text-white';
+                });
+
+                socket.on('disconnect', () => {
+                    console.log('WebSocket disconnected');
+                    socketStatus.textContent = 'WebSocket: Disconnected';
+                    socketStatus.className = 'socket-status bg-danger text-white';
+                });
+
+                socket.on('document-update', (data) => {
+                    console.log('Document update:', data);
+                    updateDocumentInList(data);
+                });
+
+                socket.on('document-error', (data) => {
+                    console.error('Document error:', data);
+                    updateDocumentInList({
+                        documentId: data.documentId,
+                        processingState: {
+                            status: 'failed',
+                            message: data.error.message,
+                            progress: 0,
+                            lastUpdated: new Date().toISOString()
+                        }
+                    });
+                });
+            } catch (error) {
+                console.error('WebSocket setup error:', error);
+                socketStatus.textContent = 'WebSocket: Failed to connect';
+                socketStatus.className = 'socket-status bg-danger text-white';
+            }
+        }
+
+        // Load documents
+        async function loadDocuments() {
+            try {
+                // In a real app, you would fetch the list of documents for the user
+                // For demo, we'll use localStorage to persist documents between page reloads
+                const storedDocuments = localStorage.getItem('documents');
+
+                if (storedDocuments) {
+                    documents = JSON.parse(storedDocuments);
+                    renderDocuments();
+
+                    // Subscribe to updates for all documents
+                    if (socket && socket.connected) {
+                        documents.forEach(doc => {
+                            socket.emit('subscribe', { documentId: doc.documentId });
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading documents:', error);
+            }
+        }
+
+        // Add document to list
+        function addDocumentToList(document) {
+            documents.unshift(document);
+
+            // Store in localStorage
+            localStorage.setItem('documents', JSON.stringify(documents));
+
+            // Subscribe to updates
+            if (socket && socket.connected) {
+                socket.emit('subscribe', { documentId: document.documentId });
+            }
+
+            renderDocuments();
+        }
+
+        // Update document in list
+        function updateDocumentInList(update) {
+            const index = documents.findIndex(doc => doc.documentId === update.documentId);
+
+            if (index !== -1) {
+                // Update document
+                documents[index] = {
+                    ...documents[index],
+                    ...update
+                };
+
+                // Store in localStorage
+                localStorage.setItem('documents', JSON.stringify(documents));
+
+                renderDocuments();
+            }
+        }
+
+        // Render documents
+        function renderDocuments() {
+            if (documents.length === 0) {
+                documentsContainer.innerHTML = `
+                    <div class="text-center text-muted py-5">
+                        <p>No documents uploaded yet</p>
+                    </div>
+                `;
+                return;
+            }
+
+            documentsContainer.innerHTML = '';
+
+            documents.forEach(doc => {
+                const status = doc.processingState?.status || 'unknown';
+                const progress = doc.processingState?.progress || 0;
+                const message = doc.processingState?.message || '';
+                const lastUpdated = doc.processingState?.lastUpdated ? new Date(doc.processingState.lastUpdated).toLocaleString() : '';
+
+                let statusBadgeClass = 'bg-secondary';
+
+                switch (status) {
+                    case 'uploaded':
+                    case 'ocr_processing':
+                    case 'semantic_mapping':
+                        statusBadgeClass = 'bg-warning text-dark';
+                        break;
+                    case 'completed':
+                    case 'ocr_completed':
+                    case 'fields_mapped':
+                        statusBadgeClass = 'bg-success';
+                        break;
+                    case 'failed':
+                        statusBadgeClass = 'bg-danger';
+                        break;
+                }
+
+                const documentCard = document.createElement('div');
+                documentCard.className = `card document-card ${status}`;
+                documentCard.innerHTML = `
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h6 class="card-title">${doc.originalName || 'Document'}</h6>
+                                <p class="card-text text-muted mb-1">ID: ${doc.documentId}</p>
+                            </div>
+                            <span class="badge ${statusBadgeClass} status-badge">${status}</span>
+                        </div>
+                        
+                        <div class="progress-container">
+                            <div class="progress" style="height: 5px;">
+                                <div class="progress-bar ${statusBadgeClass}" role="progressbar" style="width: ${progress}%;" 
+                                    aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100"></div>
+                            </div>
+                            <small class="text-muted d-block mt-1">${message}</small>
+                            <small class="text-muted d-block">${lastUpdated}</small>
+                        </div>
+                        
+                        ${doc.mappedFields ? renderFieldMappings(doc.mappedFields) : ''}
+                        
+                        <div class="mt-3">
+                            <button class="btn btn-sm btn-outline-primary view-details-btn" 
+                                data-document-id="${doc.documentId}">View Details</button>
+                            ${status === 'failed' ?
+                        `<button class="btn btn-sm btn-outline-warning retry-btn ms-2" 
+                                    data-document-id="${doc.documentId}">Retry</button>` : ''}
+                        </div>
+                    </div>
+                `;
+
+                // Add event listeners
+                documentCard.querySelector('.view-details-btn').addEventListener('click', () => {
+                    // In a real app, navigate to document details page
+                    alert(`View details for document ${doc.documentId}`);
+                });
+
+                const retryBtn = documentCard.querySelector('.retry-btn');
+                if (retryBtn) {
+                    retryBtn.addEventListener('click', () => {
+                        retryProcessing(doc.documentId);
+                    });
+                }
+
+                documentsContainer.appendChild(documentCard);
+            });
+        }
+
+        // Render field mappings
+        function renderFieldMappings(mappedFields) {
+            if (!mappedFields || !mappedFields.length) {
+                return '';
+            }
+
+            let html = '<div class="field-mapping mt-3">';
+            html += '<h6>Extracted Fields:</h6>';
+            html += '<ul class="list-group list-group-flush">';
+
+            mappedFields.forEach(field => {
+                html += `
+                    <li class="list-group-item p-2">
+                        <strong>${field.fieldId}:</strong> ${field.value || 'N/A'}
+                        <span class="badge bg-info text-dark float-end">${field.confidence}%</span>
+                    </li>
+                `;
+            });
+
+            html += '</ul></div>';
+            return html;
+        }
+
+        // Retry processing
+        async function retryProcessing(documentId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/documents/${documentId}/retry`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    console.log('Processing retry initiated:', data);
+                    alert(`Processing retry initiated for document ${documentId}`);
+
+                    // Update document in list
+                    updateDocumentInList({
+                        documentId,
+                        processingState: {
+                            status: 'retry',
+                            message: 'Retrying document processing',
+                            progress: 0,
+                            lastUpdated: new Date().toISOString()
+                        }
+                    });
+                } else {
+                    console.error('Retry failed:', data);
+                    alert(`Retry failed: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Retry error:', error);
+                alert('Retry failed due to an error');
+            }
+        }
+    </script>
+</body>
+
+</html>
