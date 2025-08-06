@@ -1,5 +1,6 @@
-import React, { useRef } from "react";
+import React, { useRef, useEffect } from "react";
 import PropTypes from "prop-types";
+import wsFactory from "../utils/WebSocketFactory";
 
 /**
  * EvidenceUpload is a modular file upload component for evidence documents.
@@ -13,6 +14,64 @@ const EvidenceUpload = ({ onUpload, onDelete, evidenceList, uploadStatus }) => {
   const fileInputRef = useRef();
   const [showModal, setShowModal] = React.useState(false);
   const [pendingDelete, setPendingDelete] = React.useState(null);
+
+  // Set up WebSocket subscriptions for each evidence file when the component mounts
+  useEffect(() => {
+    console.log('[EvidenceUpload] Setting up WebSocket subscriptions for evidence files');
+    const unsubscribeFunctions = [];
+
+    // Subscribe to updates for each evidence file that has a documentId
+    if (evidenceList && evidenceList.length > 0) {
+      evidenceList.forEach(file => {
+        // The documentId might be embedded in the file object or in the URL
+        const documentId = file.documentId || extractDocumentIdFromUrl(file.url);
+
+        // Check if this is a pre-existing uploaded file (has URL) or a new upload (no URL)
+        const isExistingFile = !!file.url;
+
+        if (documentId) {
+          console.log(`[EvidenceUpload] Subscribing to updates for document ${documentId} (existing file: ${isExistingFile})`);
+
+          const unsubscribe = wsFactory.subscribeToDocument(documentId, (update) => {
+            console.log(`[EvidenceUpload] Received update for document ${documentId}:`, update);
+
+            // Add a flag to the update to indicate this is an existing file
+            // This way the status handler can decide to ignore updates for existing files
+            if (isExistingFile) {
+              update.isExistingFile = true;
+            }
+
+            // Call the parent component's update handler if it exists
+            if (typeof window.handleDocumentStatusUpdate === 'function') {
+              window.handleDocumentStatusUpdate(documentId, update);
+            }
+          });
+
+          unsubscribeFunctions.push(unsubscribe);
+        }
+      });
+    }
+
+    // Clean up subscriptions on unmount
+    return () => {
+      console.log('[EvidenceUpload] Cleaning up WebSocket subscriptions');
+      unsubscribeFunctions.forEach(unsubscribe => unsubscribe());
+    };
+  }, [evidenceList]);
+
+  // Helper function to extract document ID from URL
+  const extractDocumentIdFromUrl = (url) => {
+    if (!url) return null;
+
+    // URL format might be like /api/evidence/user123/doc456.pdf 
+    // Extract the doc456 part as the document ID
+    const urlParts = url.split('/');
+    const fileName = urlParts[urlParts.length - 1];
+
+    // Extract the document ID from the filename (might need adjusting based on actual URL format)
+    const match = fileName.match(/^([a-zA-Z0-9_-]+)/);
+    return match ? match[1] : null;
+  };
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files.length > 0) {
